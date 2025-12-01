@@ -1,0 +1,27 @@
+{
+  "name": "aimee-poc",
+  "version": "1.0.0",
+  "description": "AImee POC - Voice-first AI Tour Guide",
+  "private": true,
+  "workspaces": [
+    "mobile"
+  ],
+  "scripts": {
+    "mobile": "cd mobile && npm run start",
+    "mobile:ios": "cd mobile && npx expo run:ios",
+    "mobile:android": "cd mobile && npx expo run:android",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "livekit",
+    "ai",
+    "voice",
+    "tour-guide"
+  ],
+  "author": "AImee POC Team",
+  "license": "MIT"
+}

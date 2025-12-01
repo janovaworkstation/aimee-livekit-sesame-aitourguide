@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./docker/backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./docker/backend/src:/app/src
+
+  agent:
+    build: ./docker/agent
+    platform: "linux/amd64"
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - LIVEKIT_URL=${LIVEKIT_URL}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_REALTIME_MODEL=${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview-2024-10-01}
+      - ROOM_NAME=${ROOM_NAME:-aimee-phase1}
+      - PARTICIPANT_IDENTITY=${PARTICIPANT_IDENTITY:-aimee-agent}
+    depends_on:
+      - backend
+    volumes:
+      - ./docker/agent/src:/app/src
+
+  rag-db:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=aimee_rag
+      - POSTGRES_USER=aimee
+      - POSTGRES_PASSWORD=aimee_dev
+    volumes:
+      - rag_data:/var/lib/postgresql/data
+
+volumes:
+  rag_data:
