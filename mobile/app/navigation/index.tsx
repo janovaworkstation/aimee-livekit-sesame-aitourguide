@@ -1,10 +1,14 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import AimeeHomeScreen from '../screens/AimeeHomeScreen';
+import AimeeConversationScreen from '../screens/AimeeConversationScreen';
 import VoiceScreen from '../screens/VoiceScreen';
 import TourScreen from '../screens/TourScreen';
 
 export type RootStackParamList = {
+  AimeeHome: undefined;
+  AimeeConversation: undefined;
   Voice: undefined;
   Tour: undefined;
 };
@@ -15,7 +19,7 @@ export default function Navigation() {
   return (
     <NavigationContainer>
       <Stack.Navigator
-        initialRouteName="Voice"
+        initialRouteName="AimeeHome"
         screenOptions={{
           headerStyle: {
             backgroundColor: '#2196F3',
@@ -26,6 +30,28 @@ export default function Navigation() {
           },
         }}
       >
+        <Stack.Screen
+          name="AimeeHome"
+          component={AimeeHomeScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="AimeeConversation"
+          component={AimeeConversationScreen}
+          options={{
+            title: 'AImee Conversation',
+            headerStyle: {
+              backgroundColor: '#CD7F32',
+            },
+            headerTintColor: '#fff',
+            headerTitleStyle: {
+              fontWeight: 'bold',
+              fontSize: 18,
+            },
+          }}
+        />
         <Stack.Screen
           name="Voice"
           component={VoiceScreen}
