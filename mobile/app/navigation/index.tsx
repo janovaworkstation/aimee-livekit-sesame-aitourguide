@@ -2,12 +2,14 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import AimeeHomeScreen from '../screens/AimeeHomeScreen';
+import AimeeInteractionScreen from '../screens/AimeeInteractionScreen';
 import AimeeConversationScreen from '../screens/AimeeConversationScreen';
 import VoiceScreen from '../screens/VoiceScreen';
 import TourScreen from '../screens/TourScreen';
 
 export type RootStackParamList = {
   AimeeHome: undefined;
+  AimeeInteraction: undefined;
   AimeeConversation: undefined;
   Voice: undefined;
   Tour: undefined;
@@ -33,6 +35,13 @@ export default function Navigation() {
         <Stack.Screen
           name="AimeeHome"
           component={AimeeHomeScreen}
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="AimeeInteraction"
+          component={AimeeInteractionScreen}
           options={{
             headerShown: false,
           }}

@@ -23,7 +23,7 @@ interface Props {
 export default function AimeeHomeScreen({ navigation }: Props) {
   const handleLetBeginPress = () => {
     console.log('AImee start pressed');
-    navigation.navigate('AimeeConversation');
+    navigation.navigate('AimeeInteraction');
   };
 
   return (
