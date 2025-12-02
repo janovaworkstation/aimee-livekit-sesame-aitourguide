@@ -12,11 +12,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python requirements and install dependencies
-COPY requirements.txt .
+COPY docker/agent/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the agent source code
-COPY . .
+COPY docker/agent .
+
+# Copy prompt configuration files
+COPY config ./config
 
 # Expose port for LiveKit Agents (if needed)
 EXPOSE 3001

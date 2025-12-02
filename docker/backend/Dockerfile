@@ -3,12 +3,15 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install dependencies
-COPY package.json package-lock.json ./
+COPY docker/backend/package.json docker/backend/package-lock.json ./
 RUN npm install
 
 # Copy TypeScript configuration and source code
-COPY tsconfig.json ./
-COPY src ./src
+COPY docker/backend/tsconfig.json ./
+COPY docker/backend/src ./src
+
+# Copy prompt configuration files
+COPY config ./config
 
 # Build TypeScript
 RUN npm run build

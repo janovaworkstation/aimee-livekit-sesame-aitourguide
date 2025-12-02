@@ -1,8 +1,13 @@
 // OpenAI Engine for AImee POC Phase 2
 // Text-based testing implementation using OpenAI Chat Completions API
+//
+// NOTE: This implementation uses OpenAI Chat Completions API (text-based LLM).
+// We are NOT using the OpenAI Realtime STS API yet.
+// Architecture: HTTP Request → Text LLM → Text Response
 
 import OpenAI from 'openai';
 import { getBrainForEnvironment } from '../brains/config';
+import { getDefaultLLMModel, getTTSModel, getRealtimeModel } from '../config/openaiModelConfig';
 
 export interface RealtimeTestRequest {
   message: string;
@@ -64,12 +69,13 @@ export class OpenAIRealtimeEngine {
       }
 
       console.log('OpenAI: Processing text interaction request');
+      console.log(`OpenAI Models - LLM (ACTIVE): ${getDefaultLLMModel()}, TTS (RESERVED): ${getTTSModel()}, Realtime (RESERVED): ${getRealtimeModel()}`);
 
       const systemMessage = request.instructions ||
         'You are a helpful AI assistant for the AImee POC. Provide concise and helpful responses. This is a test of the OpenAI integration for Phase 2.';
 
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini', // Using gpt-4o-mini for cost efficiency during testing
+        model: getDefaultLLMModel(), // Centralized LLM model configuration
         messages: [
           {
             role: 'system',

@@ -2,17 +2,24 @@ version: '3.8'
 
 services:
   backend:
-    build: ./docker/backend
+    build:
+      context: .
+      dockerfile: ./docker/backend/Dockerfile
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_TTS_MODEL=${OPENAI_TTS_MODEL:-gpt-4o-tts}
+      - OPENAI_REALTIME_MODEL=${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview-2024-10-01}
     volumes:
       - ./docker/backend/src:/app/src
 
   agent:
-    build: ./docker/agent
+    build:
+      context: .
+      dockerfile: ./docker/agent/Dockerfile
     platform: "linux/amd64"
     ports:
       - "3001:3001"
@@ -22,6 +29,8 @@ services:
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_TTS_MODEL=${OPENAI_TTS_MODEL:-gpt-4o-tts}
+      - OPENAI_REALTIME_MODEL=${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview-2024-10-01}
       - ROOM_NAME=${ROOM_NAME:-aimee-phase1}
       - PARTICIPANT_IDENTITY=${PARTICIPANT_IDENTITY:-aimee-agent}
     depends_on:

@@ -5,8 +5,20 @@ AImee LiveKit Voice Agent
 A voice AI agent using the LiveKit Agents framework that:
 1. Joins a LiveKit room as "aimee-agent"
 2. Listens to user audio from mobile app
-3. Uses OpenAI for conversation intelligence
+3. Uses OpenAI STT + Chat Completions + TTS for conversation intelligence
 4. Responds with natural speech via LiveKit audio
+
+PHASE 8 - THREE MODEL ARCHITECTURE:
+- LLM Model: ACTIVELY USED for Chat Completions (get_llm_model())
+- TTS Model: RESERVED for future GPT-4o-TTS integration (get_tts_model())
+- Realtime Model: RESERVED for future Realtime STS API (get_realtime_model())
+
+EXTERNALIZED PROMPTS:
+AImee's main system prompt is now stored in /config/prompts/aimee_system_prompt.md.
+To change AImee's persona or introduction, edit that file rather than this code.
+
+Current Architecture: LiveKit Agents → STT → Text LLM → TTS → Audio Response
+Future Architecture: Direct GPT-4o-TTS or Realtime STS models
 
 This replaces the previous Node.js implementation that had audio frame access limitations.
 """
@@ -25,6 +37,8 @@ from livekit.agents import (
     cli,
 )
 from livekit.plugins import openai, silero
+from aimee_model_config import get_llm_model, get_tts_model, get_realtime_model
+from prompt_loader import get_aimee_system_prompt
 
 # Configure logging
 logging.basicConfig(
@@ -33,18 +47,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("aimee-agent")
 
-# AImee's personality and behavior
-AIMEE_SYSTEM_PROMPT = """You are AImee, a friendly and knowledgeable AI tour guide assistant.
-You help people discover interesting places and provide engaging location-based information.
-
-Key traits:
-- Speak in a warm, conversational tone as if you're guiding someone on a personal tour
-- Keep responses concise but informative (ideal for in-car listening)
-- Focus on being helpful and engaging
-- You can discuss locations, landmarks, history, and points of interest
-- If you don't know something specific, acknowledge it honestly
-
-Remember: You're designed to make travel and exploration more enjoyable and educational."""
+# AImee's personality and behavior loaded from external file
+def get_aimee_instructions() -> str:
+    """Get AImee's system instructions from external prompt file."""
+    return get_aimee_system_prompt()
 
 # Environment configuration
 def get_config():
@@ -56,7 +62,7 @@ def get_config():
         "openai_api_key": os.environ.get("OPENAI_API_KEY"),
         "room_name": os.environ.get("ROOM_NAME", "aimee-phase1"),
         "participant_identity": os.environ.get("PARTICIPANT_IDENTITY", "aimee-agent"),
-        "openai_model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "openai_model": get_llm_model(),
     }
 
     # Validate required environment variables
@@ -66,11 +72,17 @@ def get_config():
     if missing_vars:
         raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
+    # Log future-ready model configuration
+    tts_model = get_tts_model()
+    realtime_model = get_realtime_model()
+
     logger.info("AImee Agent Configuration:")
     logger.info(f"  LiveKit URL: {config['livekit_url']}")
     logger.info(f"  Room Name: {config['room_name']}")
     logger.info(f"  Agent Identity: {config['participant_identity']}")
-    logger.info(f"  OpenAI Model: {config['openai_model']}")
+    logger.info(f"  OpenAI LLM Model (ACTIVE): {config['openai_model']}")
+    logger.info(f"  OpenAI TTS Model (RESERVED): {tts_model}")
+    logger.info(f"  OpenAI Realtime Model (RESERVED): {realtime_model}")
 
     return config
 
@@ -78,7 +90,7 @@ def get_config():
 class AImeeAgent(Agent):
     def __init__(self):
         super().__init__(
-            instructions=AIMEE_SYSTEM_PROMPT,
+            instructions=get_aimee_instructions(),
         )
 
     async def on_enter(self):
