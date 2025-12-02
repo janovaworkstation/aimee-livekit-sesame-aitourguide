@@ -1,0 +1,17 @@
+# LiveKit Agents framework for voice AI
+livekit-agents[openai]>=0.8.0
+
+# LiveKit Python SDK
+livekit-api>=1.0.0
+
+# LiveKit Plugins
+livekit-plugins-silero>=0.8.0
+
+# OpenAI integration
+openai>=1.0.0
+
+# Environment variable handling
+python-dotenv>=1.0.0
+
+# Additional utilities
+requests>=2.31.0

@@ -15,10 +15,12 @@ import {
   AudioSession,
   LiveKitRoom,
   useTracks,
+  useLocalParticipant,
   TrackReferenceOrPlaceholder,
   isTrackReference,
   registerGlobals
 } from '@livekit/react-native';
+import { Track } from 'livekit-client';
 import { LIVEKIT_CONFIG, SETUP_INSTRUCTIONS } from '../lib/config';
 
 type VoiceScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Voice'>;
@@ -159,7 +161,8 @@ const RoomView = ({ addToLog, onDisconnect, statusLog }: {
   onDisconnect: () => void;
   statusLog: string[];
 }) => {
-  const [isMicEnabled, setIsMicEnabled] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(false); // Start unmuted by default (mic is active)
+  const { localParticipant } = useLocalParticipant();
 
   // Get all audio tracks from the room
   const audioTracks = useTracks();
@@ -179,18 +182,24 @@ const RoomView = ({ addToLog, onDisconnect, statusLog }: {
 
   const toggleMicrophone = async () => {
     try {
-      if (isMicEnabled) {
-        addToLog('Disabling microphone...');
-        // Note: LiveKitRoom handles mic control automatically
-        setIsMicEnabled(false);
-        addToLog('Microphone disabled');
+      if (!localParticipant) {
+        addToLog('Local participant not available');
+        return;
+      }
+
+      if (isMicMuted) {
+        addToLog('Unmuting microphone...');
+        await localParticipant.setMicrophoneEnabled(true);
+        setIsMicMuted(false);
+        addToLog('Microphone unmuted - speak to AImee');
       } else {
-        addToLog('Enabling microphone...');
-        setIsMicEnabled(true);
-        addToLog('Microphone enabled - speak to AImee');
+        addToLog('Muting microphone...');
+        await localParticipant.setMicrophoneEnabled(false);
+        setIsMicMuted(true);
+        addToLog('Microphone muted');
       }
     } catch (error) {
-      addToLog(`Microphone error: ${error}`);
+      addToLog(`Microphone toggle error: ${error}`);
     }
   };
 
@@ -207,13 +216,13 @@ const RoomView = ({ addToLog, onDisconnect, statusLog }: {
         <TouchableOpacity
           style={[
             styles.button,
-            isMicEnabled ? styles.micEnabledButton : styles.micDisabledButton
+            isMicMuted ? styles.micMutedButton : styles.micUnmutedButton
           ]}
           onPress={toggleMicrophone}
           disabled={!aimeeConnected}
         >
           <Text style={styles.buttonText}>
-            {isMicEnabled ? '🎤 Microphone ON' : '🎤 Start Microphone'}
+            {isMicMuted ? '🔇 Unmute' : '🎤 Mute'}
           </Text>
         </TouchableOpacity>
 
@@ -232,7 +241,7 @@ const RoomView = ({ addToLog, onDisconnect, statusLog }: {
             styles.statusValue,
             aimeeConnected ? styles.statusConnected : styles.statusDisconnected
           ]}>
-            {aimeeConnected ? (isMicEnabled ? 'Speaking' : 'Ready') : 'Connecting...'}
+            {aimeeConnected ? (isMicMuted ? 'Muted' : 'Listening') : 'Connecting...'}
           </Text>
         </View>
       </View>
@@ -298,11 +307,11 @@ const styles = StyleSheet.create({
   connectButton: {
     backgroundColor: '#007AFF',
   },
-  micEnabledButton: {
-    backgroundColor: '#FF9500', // Orange for speaking
+  micUnmutedButton: {
+    backgroundColor: '#34C759', // Green for unmuted/listening
   },
-  micDisabledButton: {
-    backgroundColor: '#34C759', // Green for ready
+  micMutedButton: {
+    backgroundColor: '#6C6C70', // Gray for muted
   },
   disconnectButton: {
     backgroundColor: '#FF3B30',

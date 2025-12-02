@@ -1,33 +1,25 @@
-FROM node:20-bullseye-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for @livekit/rtc-node
+# Install system dependencies needed for LiveKit Agents and audio processing
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
-    wget \
     curl \
+    build-essential \
+    ffmpeg \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# TODO: May need additional build dependencies if compilation is required:
-# - build-essential (for native module compilation)
-# - python3 (for node-gyp)
-# - pkg-config (for native library discovery)
+# Copy Python requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Node.js dependencies
-COPY package.json package-lock.json* ./
-RUN npm install
+# Copy the agent source code
+COPY . .
 
-# Copy TypeScript configuration and source code
-COPY tsconfig.json ./
-COPY src/ ./src/
-
-# Build TypeScript
-RUN npm run build
-
-# Remove legacy file
-RUN rm -f livekit-agent.ts
-
+# Expose port for LiveKit Agents (if needed)
 EXPOSE 3001
 
-CMD ["npm", "start"]
+# Run the LiveKit Agents worker
+CMD ["python", "aimee_agent.py", "start"]
