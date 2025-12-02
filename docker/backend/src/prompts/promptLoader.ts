@@ -12,7 +12,7 @@ import fs from 'fs';
 import path from 'path';
 
 // Path to prompt files in the Docker container
-const PROMPTS_BASE_PATH = path.join(__dirname, '../../../config/prompts');
+const PROMPTS_BASE_PATH = '/app/config/prompts';
 
 /**
  * Generic prompt loader with error handling

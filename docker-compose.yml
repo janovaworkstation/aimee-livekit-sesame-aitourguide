@@ -33,6 +33,9 @@ services:
       - OPENAI_REALTIME_MODEL=${OPENAI_REALTIME_MODEL:-gpt-4o-realtime-preview-2024-10-01}
       - ROOM_NAME=${ROOM_NAME:-aimee-phase1}
       - PARTICIPANT_IDENTITY=${PARTICIPANT_IDENTITY:-aimee-agent}
+      - USE_BACKEND_ROUTER=${USE_BACKEND_ROUTER:-true}
+      - BACKEND_URL=${BACKEND_URL:-http://backend:3000}
+      - BACKEND_TIMEOUT=${BACKEND_TIMEOUT:-10}
     depends_on:
       - backend
 

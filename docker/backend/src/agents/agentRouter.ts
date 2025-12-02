@@ -1,5 +1,5 @@
 // AImee Multi-Agent Router
-// Phase 3: Routes user input to the most appropriate agent
+// Phase 9: Routes user input to the most appropriate agent using intent classification
 
 import { Agent } from './baseAgent';
 import { ConversationContext, AgentResult, IntentMatch, AgentPriority } from './types';
@@ -7,6 +7,7 @@ import { NavigatorAgent } from './navigatorAgent';
 import { HistorianAgent } from './historianAgent';
 import { ExperienceAgent } from './experienceAgent';
 import { MemoryAgent } from './memoryAgent';
+import { SimpleIntentRouter, IntentAnalysis } from '../brain/intentRouter';
 
 /**
  * Result of agent routing decision
@@ -88,23 +89,70 @@ export class AgentRouter {
    * Select the most appropriate agent based on input and context
    */
   private selectAgent(input: string, context: ConversationContext): RoutingResult {
+    // Phase 9: Use intent router for initial classification
+    const intentAnalysis = SimpleIntentRouter.analyzeIntent(input);
+
+    console.log(`Agent Router: Intent analysis - ${SimpleIntentRouter.getSummary(intentAnalysis)}`);
+
     const candidateAgents: Array<{ agent: Agent; confidence: number; match?: IntentMatch }> = [];
 
-    // Evaluate each agent's ability to handle the input
-    for (const agent of this.agents) {
-      if (agent.canHandle(input, context)) {
-        let confidence = 0.5; // Base confidence for agents that can handle
+    // Map intent classifications to actual agent instances
+    const primaryIntent = intentAnalysis.primaryIntent;
+    const primaryAgent = this.agents.find(agent => agent.name === primaryIntent.agent);
 
-        // Get detailed intent match if available
-        const intentMatch = agent.getIntentMatch?.(input, context);
-        if (intentMatch) {
-          confidence = intentMatch.confidence;
-          candidateAgents.push({ agent, confidence, match: intentMatch });
-        } else {
-          candidateAgents.push({ agent, confidence });
+    if (primaryAgent && primaryAgent.canHandle(input, context)) {
+      candidateAgents.push({
+        agent: primaryAgent,
+        confidence: primaryIntent.confidence,
+        match: {
+          confidence: primaryIntent.confidence,
+          keywords: primaryIntent.matchedKeywords,
+          priority: AgentPriority.HIGH
         }
+      });
 
-        console.log(`Agent Router: ${agent.name} can handle (confidence: ${confidence.toFixed(2)})`);
+      console.log(`Agent Router: ${primaryAgent.name} (PRIMARY INTENT) confidence: ${primaryIntent.confidence.toFixed(2)}`);
+    }
+
+    // Add alternative intents as candidates
+    for (const altIntent of intentAnalysis.alternativeIntents) {
+      if (altIntent.confidence > 0.2) { // Only consider alternatives with reasonable confidence
+        const altAgent = this.agents.find(agent => agent.name === altIntent.agent);
+        if (altAgent && altAgent.canHandle(input, context)) {
+          candidateAgents.push({
+            agent: altAgent,
+            confidence: altIntent.confidence,
+            match: {
+              confidence: altIntent.confidence,
+              keywords: altIntent.matchedKeywords,
+              priority: AgentPriority.MEDIUM
+            }
+          });
+
+          console.log(`Agent Router: ${altAgent.name} (ALTERNATIVE) confidence: ${altIntent.confidence.toFixed(2)}`);
+        }
+      }
+    }
+
+    // Fallback: If no intent-based matches, use original canHandle logic
+    if (candidateAgents.length === 0) {
+      console.log('Agent Router: No intent matches found, falling back to canHandle evaluation');
+
+      for (const agent of this.agents) {
+        if (agent.canHandle(input, context)) {
+          let confidence = 0.3; // Lower confidence for fallback
+
+          // Get detailed intent match if available
+          const intentMatch = agent.getIntentMatch?.(input, context);
+          if (intentMatch) {
+            confidence = Math.max(confidence, intentMatch.confidence);
+            candidateAgents.push({ agent, confidence, match: intentMatch });
+          } else {
+            candidateAgents.push({ agent, confidence });
+          }
+
+          console.log(`Agent Router: ${agent.name} (FALLBACK) can handle (confidence: ${confidence.toFixed(2)})`);
+        }
       }
     }
 
