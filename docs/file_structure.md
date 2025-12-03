@@ -27,17 +27,37 @@ aimee-poc/
 │   │
 │   ├── backend/
 │   │   ├── Dockerfile
+│   │   ├── jest.config.js
 │   │   ├── src/
 │   │   │   ├── index.ts
-│   │   │   ├── livekit-agent/
-│   │   │   ├── brains/
+│   │   │   ├── __tests__/
+│   │   │   │   └── setup.ts
+│   │   │   ├── brain/
+│   │   │   │   ├── intentRouter.ts
+│   │   │   │   └── __tests__/
 │   │   │   ├── agents/
+│   │   │   │   ├── baseAgent.ts
+│   │   │   │   ├── agentRouter.ts
+│   │   │   │   ├── navigatorAgent.ts
+│   │   │   │   ├── historianAgent.ts
+│   │   │   │   ├── experienceAgent.ts
+│   │   │   │   ├── memoryAgent.ts
+│   │   │   │   └── __tests__/
+│   │   │   ├── memory/
+│   │   │   │   ├── jsonMemoryStore.ts
+│   │   │   │   ├── transcriptStore.ts
+│   │   │   │   └── __tests__/
+│   │   │   ├── testing/
+│   │   │   │   ├── llmJudge.ts
+│   │   │   │   └── __tests__/
+│   │   │   │       └── criticalPaths.test.ts
 │   │   │   └── rag/
 │   │   └── package.json
 │   │
 │   ├── agent/
 │   │   ├── Dockerfile
-│   │   └── livekit-agent.ts
+│   │   ├── aimee_agent.py
+│   │   └── backend_client.py
 │   │
 │   ├── sesame/
 │   │   ├── Dockerfile
@@ -47,7 +67,9 @@ aimee-poc/
 │   │
 │   └── rag-db/
 │       ├── Dockerfile
-│       └── markers.db
+│       ├── markers.db
+│       ├── memory.json
+│       └── transcripts.json
 │
 └── docs/
     ├── architecture.md
@@ -61,3 +83,5 @@ aimee-poc/
 - docker-compose controls backend, agent, sesame, db.
 - Runpod hosts the sesame container.
 - Mobile app remains outside Docker (RN runs on device).
+- User memory and transcripts stored in JSON files in rag-db volume.
+- Testing framework uses Jest with LLM-as-Judge for quality evaluation.

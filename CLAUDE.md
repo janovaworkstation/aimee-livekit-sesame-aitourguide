@@ -72,7 +72,7 @@ npm start
    - Uses LiveKit Agents framework with `@server.rtc_session()` pattern
    - Integrates OpenAI STT, LLM (gpt-4o-mini), and TTS
    - Implements `AImeeAgent` class with personality prompts
-3. **Node.js Backend** provides multi-agent conversation endpoints (legacy, not used in Phase 6)
+3. **Node.js Backend** - Multi-agent conversation processing, memory, and transcript storage
 
 ### Key Configuration
 - **Environment Variables**: Set in `.env` file (LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, OPENAI_API_KEY)
@@ -110,9 +110,73 @@ npm start
 4. User can mute/unmute microphone for conversation control
 5. Agent processes speech → text → LLM → speech pipeline continuously
 
-### Environment Configuration
-The system supports multiple OpenAI models and brain configurations through the backend's agent routing system, but Phase 6 primarily uses the direct LiveKit Agent integration.
+### Docker Networking
+- **Agent ↔ Backend**: Python agent communicates with Node.js backend via Docker internal networking (`http://backend:3001`)
+- **No ngrok required**: Services communicate directly within Docker network
+- **Volume mounts**: `config/docker/rag-db/` mounted to `/app/rag-json/` for persistent storage
 
 ## Testing Mobile Voice Features
 
 Physical device deployment is required. See `mobile/PHASE_1_TESTING.md` for detailed testing instructions including LiveKit server setup and token generation.
+
+## Backend Testing
+
+### Test Commands
+
+```bash
+cd docker/backend
+
+# Run all unit tests (107 tests, fast, no API calls)
+npm test
+
+# Run LLM-as-Judge tests (uses OpenAI API from .env)
+npm run test:llm
+
+# Run with coverage report
+npm run test:coverage
+
+# Watch mode for development
+npm run test:watch
+```
+
+### Test Structure
+
+```text
+src/
+├── __tests__/setup.ts              # Test environment configuration
+├── brain/__tests__/                # Intent routing tests
+├── memory/__tests__/               # Memory & transcript store tests
+├── agents/__tests__/               # Agent routing & utility tests
+└── testing/
+    ├── llmJudge.ts                 # LLM-as-Judge module
+    └── __tests__/criticalPaths.test.ts  # Quality evaluation tests
+```
+
+### Test-Driven Development
+
+For new features, provide Given-When-Then statements:
+
+```gherkin
+Scenario: User asks for food nearby
+  Given the user has shared their location
+  When the user asks "What's good to eat around here?"
+  Then AImee should reference their location
+  And suggest nearby options
+```
+
+## Data Storage
+
+### User Memory
+
+- Location: `/app/rag-json/memory.json` (Docker volume)
+- Contains: name, interests, preferences, visited markers
+- API: `GET/POST /api/memory/:userId`
+
+### Conversation Transcripts
+
+- Location: `/app/rag-json/transcripts.json` (Docker volume)
+- Contains: full session history with timestamps
+- API:
+  - `POST /api/session/start` - Start new session
+  - `POST /api/session/end` - End session
+  - `GET /api/transcripts/:userId` - Get user's transcripts

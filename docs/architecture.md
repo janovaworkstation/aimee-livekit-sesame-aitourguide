@@ -14,17 +14,23 @@ LiveKit handles realtime audio transport and data tracks.
 
 ---
 
-## Deployment Layer (NEW)
-All backend components run in Docker:
+## Deployment Layer
+
+All backend components run in Docker with internal networking:
 
 ```
 docker/
-   backend/           (Node server + brain router)
-   agent/             (LiveKit agent container)
+   backend/           (Node server + brain router + memory/transcripts)
+   agent/             (LiveKit agent container - Python)
    sesame/            (Sesame AI GPU container)
-   rag-db/            (SQLite or Postgres optional container)
+   rag-db/            (JSON storage volume)
    docker-compose.yml
 ```
+
+### Docker Networking
+- Services communicate via Docker internal network (no ngrok required)
+- Agent → Backend: `http://backend:3001`
+- Shared volume: `config/docker/rag-db/` → `/app/rag-json/`
 
 Sesame runs on Runpod GPU using docker-compose or direct Docker commands.
 
@@ -123,15 +129,45 @@ Else:
 - Offline tiles via Mapbox  
 - On-device LLM for fallback  
 - On-device TTS (Apple/Android)  
-- Offline geofencing remains fully local  
+- Offline geofencing remains fully local
+
+---
+
+## Data Persistence
+
+### User Memory
+- Stored in JSON file (`/app/rag-json/memory.json`)
+- Contains user preferences, name, interests, visited markers
+- Persists across sessions via Docker volume mount
+
+### Conversation Transcripts
+- Stored in JSON file (`/app/rag-json/transcripts.json`)
+- Full session history with timestamps
+- Supports multiple sessions per user
+- API endpoints for session management
+
+---
+
+## Testing Architecture
+
+### Layered Testing Approach
+1. **Unit Tests** - Deterministic logic (routing, storage, utilities)
+2. **Behavioral Tests** - Side effects verification (memory saved, agent selected)
+3. **LLM-as-Judge Tests** - Response quality for critical user interactions
+
+### Test-Driven Development
+- Define features as Given-When-Then statements
+- Write failing tests first
+- Implement to pass tests
 
 ---
 
 ## Summary
 This architecture is:
-- scalable  
-- portable  
-- cloud-ready  
-- offline-capable  
-- future-proof  
+- scalable
+- portable
+- cloud-ready
+- offline-capable
+- future-proof
+- test-driven with quality evaluation
 - optimized for Claude Code automation  
