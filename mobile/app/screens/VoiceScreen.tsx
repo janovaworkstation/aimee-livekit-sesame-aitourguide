@@ -103,8 +103,14 @@ export default function VoiceScreen({ navigation }: Props) {
           }}
           audio={true}
           video={false}
-          onConnected={() => {
+          onConnected={async () => {
             addToLog('Successfully connected to LiveKit room');
+            addToLog('Initializing audio for AImee greeting...');
+
+            // Small delay to ensure audio systems are ready
+            setTimeout(() => {
+              addToLog('Audio initialization complete - ready for AImee greeting');
+            }, 1000);
           }}
           onDisconnected={() => {
             addToLog('Disconnected from LiveKit room');
@@ -177,8 +183,16 @@ const RoomView = ({ addToLog, onDisconnect, statusLog }: {
   useEffect(() => {
     if (aimeeConnected) {
       addToLog('AImee agent detected in room');
+
+      // Ensure microphone is enabled when AImee connects
+      if (localParticipant && !isMicMuted) {
+        addToLog('Enabling microphone for AImee interaction...');
+        localParticipant.setMicrophoneEnabled(true).catch((error) => {
+          addToLog(`Failed to enable microphone: ${error}`);
+        });
+      }
     }
-  }, [aimeeConnected]);
+  }, [aimeeConnected, localParticipant, isMicMuted]);
 
   const toggleMicrophone = async () => {
     try {

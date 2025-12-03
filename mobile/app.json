@@ -25,11 +25,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bitcode": false,
-      "bundleIdentifier": "com.anonymous.aimee-poc",
+      "bundleIdentifier": "com.virel.aimee",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "AImee needs location access to provide location-based tour guidance and arrival notifications."
-      }
+        "NSLocationWhenInUseUsageDescription": "AImee needs location access to provide location-based tour guidance and arrival notifications.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bitcode": false
     },
     "android": {
       "adaptiveIcon": {
@@ -38,32 +39,27 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
+      "package": "com.virel.aimee",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.BLUETOOTH",
+        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.WAKE_LOCK",
         "android.permission.SYSTEM_ALERT_WINDOW",
         "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE",
         "android.permission.BLUETOOTH",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.WAKE_LOCK",
-        "android.permission.SYSTEM_ALERT_WINDOW",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.ACCESS_COARSE_LOCATION"
-      ],
-      "package": "com.anonymous.aimeepoc"
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1740b828-e557-42b4-aa0c-0f93049cd110"
+      }
     }
   }
 }

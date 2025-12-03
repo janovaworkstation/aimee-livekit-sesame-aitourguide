@@ -90,15 +90,19 @@ export class AgentRouter {
    */
   private selectAgent(input: string, context: ConversationContext): RoutingResult {
     // Special handling for session start system messages
-    if (input.includes('[SYSTEM: This is the initial session')) {
-      console.log('Agent Router: Session start detected, routing to Memory agent for greeting');
+    // Match both "new session" (from Python agent) and "initial session" (legacy)
+    // Also match reconnection messages
+    if (input.includes('[SYSTEM: This is a new session') ||
+        input.includes('[SYSTEM: This is the initial session') ||
+        input.includes('[SYSTEM: The user has just reconnected')) {
+      console.log('Agent Router: Session start/reconnect detected, routing to Memory agent for greeting');
       const memoryAgent = this.agents.find(a => a.name === 'Memory');
       if (memoryAgent) {
         return {
           selectedAgent: memoryAgent,
           confidence: 1.0,
           alternativeAgents: [],
-          reasoning: 'Session start message - checking for stored user memory'
+          reasoning: 'Session start/reconnect message - checking for stored user memory'
         };
       }
     }

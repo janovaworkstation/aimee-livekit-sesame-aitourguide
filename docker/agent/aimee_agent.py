@@ -21,11 +21,18 @@ Current Architecture: LiveKit Agents → STT → Text LLM → TTS → Audio Resp
 Future Architecture: Direct GPT-4o-TTS or Realtime STS models
 
 This replaces the previous Node.js implementation that had audio frame access limitations.
+
+SESSION HANDLING:
+- Tracks participant connections to detect reconnections
+- Resets session state when user force-quits and rejoins
+- Loads user memory from backend on each new session
 """
 
 import asyncio
 import logging
 import os
+import time
+from typing import Optional, Dict, Any
 
 from livekit.agents import (
     Agent,
@@ -36,6 +43,7 @@ from livekit.agents import (
     JobProcess,
     cli,
 )
+from livekit import rtc
 
 # Try to import StopResponse for preventing further agent processing
 try:
@@ -47,6 +55,9 @@ from livekit.plugins import openai, silero
 from aimee_model_config import get_llm_model, get_tts_model, get_realtime_model
 from prompt_loader import get_aimee_system_prompt
 from backend_client import backend_client
+
+# Track active sessions per room to detect reconnections
+_active_sessions: Dict[str, Dict[str, Any]] = {}
 
 # Configure logging
 logging.basicConfig(
@@ -98,15 +109,27 @@ def get_config():
 
 # Create AImee agent class
 class AImeeAgent(Agent):
-    def __init__(self, use_backend_router=False):
+    def __init__(self, use_backend_router=False, room_name: str = "", is_reconnection: bool = False):
         super().__init__(
             instructions=get_aimee_instructions(),
         )
         self.use_backend_router = use_backend_router
+        self.room_name = room_name
+        self.is_reconnection = is_reconnection
+        self._session_started = False
 
     async def on_enter(self):
         """Called when agent becomes active"""
-        logger.info("AImee agent entering session - sending greeting using main system prompt")
+        # Prevent duplicate greetings if on_enter is called multiple times
+        if self._session_started:
+            logger.info("AImee agent on_enter called but session already started - skipping greeting")
+            return
+        self._session_started = True
+
+        if self.is_reconnection:
+            logger.info("AImee agent entering session - RECONNECTION detected, sending welcome back message")
+        else:
+            logger.info("AImee agent entering session - NEW session, sending greeting")
 
         # Wait a moment for mobile app audio tracks to be fully established
         # This prevents the greeting from being sent before mobile can receive it
@@ -116,10 +139,22 @@ class AImeeAgent(Agent):
         if self.use_backend_router:
             # Use backend to check for existing user memory and provide appropriate greeting
             try:
+                if self.is_reconnection:
+                    # User reconnected - acknowledge the reconnection and use their name if known
+                    system_message = "[SYSTEM: The user has just reconnected after briefly leaving. Welcome them back warmly. If you know their name, use it. Keep it brief - just acknowledge you're glad they're back and ask how you can help.]"
+                else:
+                    # New session - check for stored name
+                    system_message = "[SYSTEM: This is a new session. Check if the user has a stored name and greet accordingly. If no name is stored, ask for their name. If a name is stored, greet them by name.]"
+
                 backend_response = await backend_client.chat(
                     user_id="voice-user",
-                    user_input="[SYSTEM: This is the initial session. Check if the user has a stored name and greet accordingly. If no name is stored, ask for their name. If a name is stored, greet them by name.]",
-                    context={"mode": "voice", "source": "livekit", "session_start": True}
+                    user_input=system_message,
+                    context={
+                        "mode": "voice",
+                        "source": "livekit",
+                        "session_start": True,
+                        "is_reconnection": self.is_reconnection
+                    }
                 )
 
                 if backend_response.success:
@@ -133,9 +168,14 @@ class AImeeAgent(Agent):
 
         # Fallback: Always use main AImee system prompt for initial greeting
         # This happens when backend routing is disabled or fails
-        await self.session.generate_reply(
-            instructions="Greet the user warmly and let them know you're AImee, their AI tour guide assistant, ready to help with location information and travel guidance. Ask what you should call them."
-        )
+        if self.is_reconnection:
+            await self.session.generate_reply(
+                instructions="Welcome the user back briefly. They just reconnected after a brief interruption. Ask how you can help them."
+            )
+        else:
+            await self.session.generate_reply(
+                instructions="Greet the user warmly and let them know you're AImee, their AI tour guide assistant, ready to help with location information and travel guidance. Ask what you should call them."
+            )
 
     async def on_user_turn_completed(self, turn_ctx, new_message):
         """Handle user turn completion - override to route through backend or direct OpenAI"""
@@ -157,9 +197,9 @@ class AImeeAgent(Agent):
                     new_message.text_content = ""
                     return
             else:
-                # Backend failed, fall back to standard processing
-                logger.info("Backend processing failed, falling back to standard LiveKit processing")
-                await super().on_user_turn_completed(turn_ctx, new_message)
+                # Backend failed, fall back to direct LLM processing
+                logger.info("Backend processing failed, using direct LLM fallback")
+                await self.session.generate_reply()
         else:
             # Use standard LiveKit Agent behavior for direct OpenAI
             await super().on_user_turn_completed(turn_ctx, new_message)
@@ -215,34 +255,98 @@ server.setup_fnc = prewarm
 async def entrypoint(ctx: JobContext):
     """Main entry point for the AImee voice agent"""
     config = ctx.proc.userdata["config"]
+    room_name = ctx.room.name
 
     # Set logging context
-    ctx.log_context_fields = {"room": ctx.room.name}
+    ctx.log_context_fields = {"room": room_name}
 
-    logger.info(f"AImee Agent starting session in room '{ctx.room.name}'")
+    logger.info(f"AImee Agent starting session in room '{room_name}'")
 
-    # Create agent session with OpenAI STT, LLM, and TTS
-    session = AgentSession(
-        vad=ctx.proc.userdata["vad"],  # Pre-loaded VAD
-        stt=openai.STT(api_key=config["openai_api_key"]),  # Speech-to-text
-        llm=openai.LLM(
-            model=config["openai_model"],
-            api_key=config["openai_api_key"],
-        ),  # Language model
-        tts=openai.TTS(
-            api_key=config["openai_api_key"],
-            voice="alloy",  # Natural voice for AImee
-        ),
-    )
+    # Check if this is a reconnection (user force-quit and rejoined)
+    is_reconnection = False
+    if room_name in _active_sessions:
+        last_session = _active_sessions[room_name]
+        # If we had a session within the last 5 minutes, treat as reconnection
+        time_since_last = time.time() - last_session.get("last_seen", 0)
+        if time_since_last < 300:  # 5 minutes
+            is_reconnection = True
+            logger.info(f"Detected RECONNECTION - user was last seen {time_since_last:.1f}s ago")
+        else:
+            logger.info(f"Previous session expired ({time_since_last:.1f}s ago) - treating as new session")
+    else:
+        logger.info("No previous session found - this is a new session")
 
-    logger.info("AImee agent session created")
+    # Track this session
+    _active_sessions[room_name] = {
+        "started": time.time(),
+        "last_seen": time.time(),
+        "participant_connected": False
+    }
 
-    # Start the agent session with backend router configuration
-    aimee_agent = AImeeAgent(use_backend_router=config["use_backend_router"])
-    await session.start(agent=aimee_agent, room=ctx.room)
+    # Session holder to track current session state for reconnection handling
+    # had_active_session: prevents duplicate sessions on fresh start (only reconnect if we HAD a session that closed)
+    session_holder: Dict[str, Any] = {"session": None, "active": False, "had_active_session": False}
 
-    router_mode = "Backend Router" if config["use_backend_router"] else "Direct OpenAI"
-    logger.info(f"AImee is now ready to assist using {router_mode}! 🎤")
+    # Helper function to create a new agent session
+    async def create_agent_session(is_reconnect: bool = False):
+        """Create and start a new agent session"""
+        new_session = AgentSession(
+            vad=ctx.proc.userdata["vad"],
+            stt=openai.STT(api_key=config["openai_api_key"]),
+            llm=openai.LLM(
+                model=config["openai_model"],
+                api_key=config["openai_api_key"],
+            ),
+            tts=openai.TTS(
+                api_key=config["openai_api_key"],
+                voice="alloy",
+            ),
+        )
+
+        new_agent = AImeeAgent(
+            use_backend_router=config["use_backend_router"],
+            room_name=room_name,
+            is_reconnection=is_reconnect
+        )
+
+        session_holder["session"] = new_session
+        session_holder["active"] = True
+        session_holder["had_active_session"] = True  # Mark that we've had at least one session
+
+        await new_session.start(agent=new_agent, room=ctx.room)
+
+        router_mode = "Backend Router" if config["use_backend_router"] else "Direct OpenAI"
+        reconnect_status = "RECONNECTION" if is_reconnect else "NEW SESSION"
+        logger.info(f"AImee is ready ({reconnect_status}) using {router_mode}!")
+
+    # Set up participant tracking for disconnect/reconnect detection
+    @ctx.room.on("participant_connected")
+    def on_participant_connected(participant: rtc.RemoteParticipant):
+        if participant.identity != config["participant_identity"]:
+            logger.info(f"Participant connected: {participant.identity}")
+            _active_sessions[room_name]["last_seen"] = time.time()
+            _active_sessions[room_name]["participant_connected"] = True
+
+            # Only create a new session if we previously HAD an active session that was closed
+            # This prevents duplicate sessions on fresh start (where initial session is still being created)
+            if not session_holder["active"] and session_holder["had_active_session"]:
+                logger.info("Session was closed - creating new session for reconnected participant")
+                asyncio.create_task(create_agent_session(is_reconnect=True))
+            elif not session_holder["active"]:
+                logger.info("No previous session existed - initial session creation will handle this participant")
+
+    @ctx.room.on("participant_disconnected")
+    def on_participant_disconnected(participant: rtc.RemoteParticipant):
+        if participant.identity != config["participant_identity"]:
+            logger.info(f"Participant disconnected: {participant.identity}")
+            _active_sessions[room_name]["last_seen"] = time.time()
+            _active_sessions[room_name]["participant_connected"] = False
+            # Mark session as inactive - it will be closed by LiveKit automatically
+            session_holder["active"] = False
+
+    # Create initial agent session
+    logger.info("Creating initial AImee agent session")
+    await create_agent_session(is_reconnect=is_reconnection)
 
 if __name__ == "__main__":
     """Run the LiveKit Agents worker"""
