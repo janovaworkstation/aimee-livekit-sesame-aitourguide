@@ -89,6 +89,20 @@ export class AgentRouter {
    * Select the most appropriate agent based on input and context
    */
   private selectAgent(input: string, context: ConversationContext): RoutingResult {
+    // Special handling for session start system messages
+    if (input.includes('[SYSTEM: This is the initial session')) {
+      console.log('Agent Router: Session start detected, routing to Memory agent for greeting');
+      const memoryAgent = this.agents.find(a => a.name === 'Memory');
+      if (memoryAgent) {
+        return {
+          selectedAgent: memoryAgent,
+          confidence: 1.0,
+          alternativeAgents: [],
+          reasoning: 'Session start message - checking for stored user memory'
+        };
+      }
+    }
+
     // Phase 9: Use intent router for initial classification
     const intentAnalysis = SimpleIntentRouter.analyzeIntent(input);
 

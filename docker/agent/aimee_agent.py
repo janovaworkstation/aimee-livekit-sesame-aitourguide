@@ -108,10 +108,33 @@ class AImeeAgent(Agent):
         """Called when agent becomes active"""
         logger.info("AImee agent entering session - sending greeting using main system prompt")
 
-        # Always use main AImee system prompt for initial greeting
-        # Backend routing is only used for user questions, not initial greeting
+        # Wait a moment for mobile app audio tracks to be fully established
+        # This prevents the greeting from being sent before mobile can receive it
+        await asyncio.sleep(2.0)
+
+        # Check if we should use backend routing for memory-aware greeting
+        if self.use_backend_router:
+            # Use backend to check for existing user memory and provide appropriate greeting
+            try:
+                backend_response = await backend_client.chat(
+                    user_id="voice-user",
+                    user_input="[SYSTEM: This is the initial session. Check if the user has a stored name and greet accordingly. If no name is stored, ask for their name. If a name is stored, greet them by name.]",
+                    context={"mode": "voice", "source": "livekit", "session_start": True}
+                )
+
+                if backend_response.success:
+                    logger.info(f"Backend memory-aware greeting successful via {backend_response.agent} agent")
+                    await self.session.say(backend_response.response, allow_interruptions=True, add_to_chat_ctx=True)
+                    return
+                else:
+                    logger.error(f"Backend greeting failed: {backend_response.error}")
+            except Exception as e:
+                logger.error(f"Backend greeting error: {e}")
+
+        # Fallback: Always use main AImee system prompt for initial greeting
+        # This happens when backend routing is disabled or fails
         await self.session.generate_reply(
-            instructions="Greet the user warmly and let them know you're AImee, their AI tour guide assistant, ready to help with location information and travel guidance."
+            instructions="Greet the user warmly and let them know you're AImee, their AI tour guide assistant, ready to help with location information and travel guidance. Ask what you should call them."
         )
 
     async def on_user_turn_completed(self, turn_ctx, new_message):

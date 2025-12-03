@@ -5,6 +5,7 @@ import { BaseAgent } from './baseAgent';
 import { ConversationContext, AgentResult, IntentMatch, AgentPriority } from './types';
 import { runSmartAgentPrompt } from '../brains/agentBrainHelper';
 import { getMemoryPrompt } from '../prompts/promptLoader';
+import { getUserMemory, upsertUserMemory } from '../memory/jsonMemoryStore';
 
 /**
  * Memory Agent - Specializes in personalization, preferences, and user context management
@@ -27,6 +28,50 @@ export class MemoryAgent extends BaseAgent {
   // System prompt loaded from external file
   private getSystemPrompt(): string {
     return getMemoryPrompt();
+  }
+
+  /**
+   * Check if the input is likely a name response based on conversation context
+   */
+  private isLikelyNameResponse(input: string, context: ConversationContext): boolean {
+    // Only consider short responses (1-2 words) that are alphabetic
+    const words = input.trim().split(/\s+/);
+    if (words.length > 2 || words.length < 1) {
+      return false;
+    }
+
+    const firstWord = words[0];
+    if (firstWord.length < 2 || !/^[A-Za-z]+$/.test(firstWord)) {
+      return false;
+    }
+
+    // Check if the last assistant message in conversation history asked for a name
+    if (!context.history || context.history.length === 0) {
+      return false;
+    }
+
+    // Find the most recent assistant message
+    const lastAssistantMessage = context.history
+      .slice()
+      .reverse()
+      .find(msg => msg.role === 'assistant');
+
+    if (!lastAssistantMessage) {
+      return false;
+    }
+
+    // Check if the assistant message contained a name-related question
+    const nameQuestions = [
+      'what should i call you',
+      'how should i address you',
+      'what do you want me to call you',
+      'what would you like me to call you',
+      'what is your name',
+      'may i have your name'
+    ];
+
+    const messageText = lastAssistantMessage.content.toLowerCase();
+    return nameQuestions.some(question => messageText.includes(question));
   }
 
   /**
@@ -56,6 +101,11 @@ export class MemoryAgent extends BaseAgent {
       return true;
     }
 
+    // Context-aware name response detection
+    if (this.isLikelyNameResponse(input, context)) {
+      return true;
+    }
+
     // Check for memory-related keywords
     return this.checkKeywords(input, this.memoryKeywords);
   }
@@ -67,32 +117,92 @@ export class MemoryAgent extends BaseAgent {
     try {
       console.log('Memory Agent: Processing personalization/memory request');
 
-      // Check if this is a preference update request
-      const preferenceUpdate = this.extractPreferenceUpdate(input);
+      // Special handling for session start greeting check
+      if (input.includes('[SYSTEM: This is the initial session')) {
+        return await this.handleSessionStart(context);
+      }
 
-      // Generate memory-focused response
+      // Get current user memory for context
+      const userId = context.userId || 'voice-user';
+      const currentMemory = await getUserMemory(userId);
+
+      // Add memory context to the prompt
+      const memoryContext = currentMemory ?
+        `Current stored memory for this user: ${JSON.stringify(currentMemory)}` :
+        'No stored memory for this user yet.';
+
+      // Generate memory-focused response with memory context
       const response = await runSmartAgentPrompt(
         this.name,
-        this.getSystemPrompt(),
-        input,
+        this.getSystemPrompt() + '\n\n' + memoryContext + '\n\nUser input: ' + input,
+        `Please analyze this input for any memory updates (names, preferences, interests, visited markers). If you detect memory updates:
+1. Output a single line starting with: SAVE_MEMORY: {valid_json_object}
+2. This line must contain ONLY that text - the literal prefix "SAVE_MEMORY:" followed by valid JSON with double quotes
+3. JSON may include fields: "name", "storyLengthPreference", "interests", "visitedMarkers"
+4. After that line, provide your natural response to the user
+5. If no memory changes, do NOT output any SAVE_MEMORY line`,
         context
       );
 
+      // Parse SAVE_MEMORY directive using line-based approach
+      let memorySaved = false;
+      let memoryUpdate: any = null;
+      const lines = response.split('\n');
+
+      // Find the SAVE_MEMORY line
+      const memoryLineIndex = lines.findIndex(line => line.trim().startsWith('SAVE_MEMORY:'));
+
+      if (memoryLineIndex !== -1) {
+        const memoryLine = lines[memoryLineIndex];
+        const jsonPart = memoryLine.substring(memoryLine.indexOf(':') + 1).trim();
+
+        console.log(`Memory Agent: SAVE_MEMORY line detected: ${memoryLine.trim()}`);
+        console.log(`Memory Agent: JSON part: ${jsonPart}`);
+
+        try {
+          memoryUpdate = JSON.parse(jsonPart);
+          await upsertUserMemory(userId, memoryUpdate);
+          memorySaved = true;
+
+          // Log successful memory update with specific fields
+          const updatedFields = Object.keys(memoryUpdate);
+          console.log(`Memory Agent: Updated memory for user ${userId}. Fields: ${updatedFields.join(', ')}`);
+        } catch (error) {
+          console.error(`Memory Agent: Error parsing SAVE_MEMORY JSON. Line: "${memoryLine.trim()}", JSON: "${jsonPart}", Error:`, error);
+
+          // Fallback: try to extract name manually from the memory line
+          const nameMatch = memoryLine.match(/["']?name["']?\s*:\s*["']([^"']+)["']/i);
+          if (nameMatch) {
+            try {
+              memoryUpdate = { name: nameMatch[1] };
+              await upsertUserMemory(userId, memoryUpdate);
+              console.log(`Memory Agent: Fallback name extraction saved: ${nameMatch[1]}`);
+              memorySaved = true;
+            } catch (fallbackError) {
+              console.error('Memory Agent: Fallback name extraction also failed:', fallbackError);
+            }
+          }
+        }
+      }
+
+      // Clean response by removing SAVE_MEMORY lines
+      const cleanLines = lines.filter(line => !line.trim().startsWith('SAVE_MEMORY:'));
+      const cleanResponse = cleanLines.join('\n').trim();
+
       const metadata: any = {
         agent: this.name,
-        hasPreferenceUpdate: !!preferenceUpdate,
         conversationLength: context.history.length,
-        confidence: this.calculateConfidence(input, context)
+        confidence: this.calculateConfidence(input, context),
+        memorySaved
       };
 
-      if (preferenceUpdate) {
-        metadata.preferenceUpdate = preferenceUpdate;
-        // TODO: In future phases, actually persist preference updates to user profile
-        console.log('Memory Agent: Detected preference update:', preferenceUpdate);
+      // Add memory update details to metadata
+      if (memorySaved && memoryUpdate) {
+        metadata.memoryUpdatedFields = Object.keys(memoryUpdate);
       }
 
       return {
-        text: response,
+        text: cleanResponse,
         metadata
       };
 
@@ -114,7 +224,7 @@ export class MemoryAgent extends BaseAgent {
   /**
    * Detailed intent matching for the router
    */
-  getIntentMatch(input: string, context: ConversationContext): IntentMatch | null {
+  getIntentMatch(input: string, _context: ConversationContext): IntentMatch | null {
     const normalizedInput = input.toLowerCase();
     let confidence = 0;
     const matchedKeywords: string[] = [];
@@ -176,37 +286,73 @@ export class MemoryAgent extends BaseAgent {
     };
   }
 
+
   /**
-   * Extract preference updates from user input
+   * Handle session start - check memory and provide appropriate greeting
    */
-  private extractPreferenceUpdate(input: string): any | null {
-    const normalizedInput = input.toLowerCase();
+  private async handleSessionStart(context: ConversationContext): Promise<AgentResult> {
+    try {
+      const userId = context.userId || 'voice-user';
+      console.log(`Memory Agent: Checking stored memory for user ${userId}`);
 
-    // Name updates
-    if (normalizedInput.includes('my name is') || normalizedInput.includes('call me')) {
-      const nameMatch = normalizedInput.match(/(?:my name is|call me)\s+(\w+)/);
-      if (nameMatch) {
-        return { type: 'name', value: nameMatch[1] };
+      const userMemory = await getUserMemory(userId);
+
+      // Create dynamic greeting using LLM
+      const memoryInfo = userMemory ?
+        `User memory found: ${JSON.stringify(userMemory)}` :
+        'No stored memory for this user.';
+
+      const greetingPrompt = userMemory?.name ?
+        `Generate a warm, personalized greeting for ${userMemory.name} who is returning to use AImee. Vary the greeting to feel natural and personal. Acknowledge their return and that you remember them. Keep it conversational and friendly, not robotic. Include that you're Amy, their AI tour guide assistant, and that you're ready to help them discover interesting places.` :
+        `Generate a warm, welcoming first-time greeting for a new user. Introduce yourself as Amy, their AI tour guide assistant. Explain briefly what you do (help discover interesting places and stories) and ask what you should call them. Make it sound natural and friendly, not scripted.`;
+
+      const response = await runSmartAgentPrompt(
+        this.name,
+        this.getSystemPrompt() + '\n\n' + memoryInfo,
+        greetingPrompt,
+        context
+      );
+
+      if (userMemory?.name) {
+        console.log(`Memory Agent: Generated personalized greeting for returning user: ${userMemory.name}`);
+        return {
+          text: response,
+          metadata: {
+            agent: this.name,
+            sessionStart: true,
+            hasStoredMemory: true,
+            userName: userMemory.name,
+            confidence: 1.0,
+            greetingType: 'returning_user'
+          }
+        };
+      } else {
+        console.log(`Memory Agent: Generated first-time greeting for new user`);
+        return {
+          text: response,
+          metadata: {
+            agent: this.name,
+            sessionStart: true,
+            hasStoredMemory: false,
+            confidence: 1.0,
+            greetingType: 'new_user'
+          }
+        };
       }
+    } catch (error) {
+      console.error('Memory Agent: Error during session start:', error);
+      return {
+        text: "Hello! I'm Amy, your AI tour guide assistant. I'm having a little trouble accessing my memory right now, but I'm ready to help you discover interesting places. What should I call you?",
+        metadata: {
+          agent: this.name,
+          sessionStart: true,
+          hasStoredMemory: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          confidence: 0.5,
+          greetingType: 'error_fallback'
+        }
+      };
     }
-
-    // Verbosity preferences
-    if (normalizedInput.includes('short') || normalizedInput.includes('brief') || normalizedInput.includes('concise')) {
-      return { type: 'verbosity', value: 'short' };
-    }
-    if (normalizedInput.includes('long') || normalizedInput.includes('detailed') || normalizedInput.includes('thorough')) {
-      return { type: 'verbosity', value: 'long' };
-    }
-
-    // Tone preferences
-    if (normalizedInput.includes('playful') || normalizedInput.includes('fun') || normalizedInput.includes('casual')) {
-      return { type: 'tone', value: 'playful' };
-    }
-    if (normalizedInput.includes('factual') || normalizedInput.includes('formal') || normalizedInput.includes('professional')) {
-      return { type: 'tone', value: 'factual' };
-    }
-
-    return null;
   }
 
   /**

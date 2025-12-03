@@ -169,3 +169,6 @@ coverage/
 
 # Local development
 .local/
+
+# Memory storage (user data should not be committed)
+config/docker/rag-db/memory.json

@@ -51,7 +51,7 @@ export class SimpleIntentRouter {
     'remember', 'preferences', 'settings', 'I like', 'prefer', 'favorite',
     'always', 'usually', 'my', 'personal', 'profile', 'save', 'keep',
     'note', 'remind', 'recall', 'previously', 'before', 'last time',
-    'customize', 'adjust'
+    'customize', 'adjust', 'my name is', 'call me', 'I am', 'name is'
   ];
 
   /**
@@ -192,6 +192,16 @@ export class SimpleIntentRouter {
       if (memoryIndex !== -1) {
         adjustedClassifications[memoryIndex].confidence += 0.15;
         adjustedClassifications[memoryIndex].reasoning += '; Personal reference detected';
+      }
+    }
+
+    // Name introductions strongly boost Memory confidence
+    const nameIntroduction = /\b(my name is|call me|i am|i'm)\s+\w+/i;
+    if (nameIntroduction.test(normalizedInput)) {
+      const memoryIndex = adjustedClassifications.findIndex(c => c.agent === 'Memory');
+      if (memoryIndex !== -1) {
+        adjustedClassifications[memoryIndex].confidence += 0.5;
+        adjustedClassifications[memoryIndex].reasoning += '; Name introduction detected';
       }
     }
 
