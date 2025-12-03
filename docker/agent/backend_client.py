@@ -25,6 +25,13 @@ class BackendResponse:
     metadata: Dict[str, Any]
     error: Optional[str] = None
 
+@dataclass
+class SessionResponse:
+    """Response from session management endpoints"""
+    success: bool
+    session_id: Optional[str] = None
+    error: Optional[str] = None
+
 class BackendClient:
     """HTTP client for AImee backend multi-agent router"""
 
@@ -54,11 +61,99 @@ class BackendClient:
         if self._session and not self._session.closed:
             await self._session.close()
 
+    async def start_session(self, user_id: str, is_reconnection: bool = False) -> SessionResponse:
+        """
+        Start a new transcript session
+
+        Args:
+            user_id: Unique user identifier
+            is_reconnection: Whether this is a reconnection
+
+        Returns:
+            SessionResponse with session_id if successful
+        """
+        if not self.enabled:
+            return SessionResponse(success=False, error="Backend router is disabled")
+
+        try:
+            session = await self._get_session()
+
+            payload = {
+                "userId": user_id,
+                "isReconnection": is_reconnection
+            }
+
+            logger.info(f"Backend Client: Starting session for user {user_id} (reconnection: {is_reconnection})")
+
+            async with session.post(
+                f"{self.backend_url}/api/session/start",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get("success"):
+                        session_id = data.get("sessionId")
+                        logger.info(f"Backend Client: Session started: {session_id}")
+                        return SessionResponse(success=True, session_id=session_id)
+                    else:
+                        return SessionResponse(success=False, error=data.get("error", "Unknown error"))
+                else:
+                    return SessionResponse(success=False, error=f"HTTP {response.status}")
+
+        except Exception as e:
+            logger.error(f"Backend Client: Start session error: {e}")
+            return SessionResponse(success=False, error=str(e))
+
+    async def end_session(self, user_id: str, session_id: str) -> SessionResponse:
+        """
+        End a transcript session
+
+        Args:
+            user_id: Unique user identifier
+            session_id: Session ID to end
+
+        Returns:
+            SessionResponse indicating success/failure
+        """
+        if not self.enabled:
+            return SessionResponse(success=False, error="Backend router is disabled")
+
+        try:
+            session = await self._get_session()
+
+            payload = {
+                "userId": user_id,
+                "sessionId": session_id
+            }
+
+            logger.info(f"Backend Client: Ending session {session_id} for user {user_id}")
+
+            async with session.post(
+                f"{self.backend_url}/api/session/end",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get("success"):
+                        logger.info(f"Backend Client: Session ended: {session_id}")
+                        return SessionResponse(success=True, session_id=session_id)
+                    else:
+                        return SessionResponse(success=False, error=data.get("error", "Unknown error"))
+                else:
+                    return SessionResponse(success=False, error=f"HTTP {response.status}")
+
+        except Exception as e:
+            logger.error(f"Backend Client: End session error: {e}")
+            return SessionResponse(success=False, error=str(e))
+
     async def chat(
         self,
         user_id: str,
         user_input: str,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
     ) -> BackendResponse:
         """
         Send user input to backend multi-agent router
@@ -67,6 +162,7 @@ class BackendClient:
             user_id: Unique user identifier
             user_input: User's spoken/text input
             context: Additional context (location, preferences, etc.)
+            session_id: Optional session ID for transcript recording
 
         Returns:
             BackendResponse with agent selection and response
@@ -89,6 +185,10 @@ class BackendClient:
                 "input": user_input,
                 "context": context or {}
             }
+
+            # Include sessionId for transcript recording
+            if session_id:
+                payload["sessionId"] = session_id
 
             logger.info(f"Backend Client: Sending request to {self.backend_url}/aimee-chat")
             logger.info(f"Backend Client: User input: {user_input[:100]}{'...' if len(user_input) > 100 else ''}")

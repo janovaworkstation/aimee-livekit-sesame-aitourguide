@@ -9,6 +9,7 @@ import { testOpenAIRealtime, openaiRealtimeEngine } from './engines/openaiRealti
 import { getBrainForEnvironment } from './brains/config';
 import { routeToAgent } from './agents/agentRouter';
 import { createDefaultContext, addToHistory } from './agents/types';
+import { startSession, endSession, addMessage, getSessionTranscripts } from './memory/transcriptStore';
 
 const app = express();
 const port = 3000;
@@ -17,6 +18,89 @@ app.use(express.json());
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'aimee-backend' });
+});
+
+// Session management endpoints for transcript storage
+app.post('/api/session/start', async (req, res) => {
+  try {
+    const { userId, isReconnection } = req.body;
+
+    if (!userId || typeof userId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing or invalid "userId" field'
+      });
+    }
+
+    const sessionId = await startSession(userId, isReconnection || false);
+
+    res.json({
+      success: true,
+      sessionId,
+      userId,
+      isReconnection: isReconnection || false,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Session start error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start session',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.post('/api/session/end', async (req, res) => {
+  try {
+    const { userId, sessionId } = req.body;
+
+    if (!userId || !sessionId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing userId or sessionId'
+      });
+    }
+
+    await endSession(userId, sessionId);
+
+    res.json({
+      success: true,
+      sessionId,
+      userId,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Session end error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to end session',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.get('/api/transcripts/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+
+    const sessions = await getSessionTranscripts(userId, limit);
+
+    res.json({
+      success: true,
+      userId,
+      sessionCount: sessions.length,
+      sessions
+    });
+  } catch (error) {
+    console.error('Get transcripts error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get transcripts',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 // OpenAI Realtime API test endpoint
@@ -99,7 +183,7 @@ app.get('/brain-status', (req, res) => {
 // AImee Multi-Agent Chat Endpoint
 app.post('/aimee-chat', async (req, res) => {
   try {
-    const { userId, input, context: contextOverrides } = req.body;
+    const { userId, input, context: contextOverrides, sessionId } = req.body;
 
     // Validate required fields
     if (!userId || typeof userId !== 'string') {
@@ -119,6 +203,14 @@ app.post('/aimee-chat', async (req, res) => {
     console.log('AImee Chat: Processing request for user:', userId);
     console.log('AImee Chat: Input:', input.substring(0, 100) + (input.length > 100 ? '...' : ''));
 
+    // Record user message to transcript (if sessionId provided)
+    if (sessionId) {
+      // Don't record system messages to transcript
+      if (!input.startsWith('[SYSTEM:')) {
+        await addMessage(userId, sessionId, 'user', input);
+      }
+    }
+
     // Build conversation context
     const context = createDefaultContext(userId, contextOverrides || {});
 
@@ -127,6 +219,11 @@ app.post('/aimee-chat', async (req, res) => {
 
     // Route to appropriate agent
     const result = await routeToAgent(input, contextWithHistory);
+
+    // Record assistant response to transcript (if sessionId provided)
+    if (sessionId) {
+      await addMessage(userId, sessionId, 'assistant', result.text);
+    }
 
     // Add assistant response to history for next interactions
     const finalContext = addToHistory(contextWithHistory, 'assistant', result.text);
@@ -140,6 +237,7 @@ app.post('/aimee-chat', async (req, res) => {
       metadata: {
         ...result.metadata,
         userId: userId,
+        sessionId: sessionId || null,
         timestamp: new Date().toISOString(),
         conversationLength: finalContext.history.length
       }
@@ -285,6 +383,9 @@ app.listen(port, () => {
   console.log(`AImee Backend running on port ${port}`);
   console.log('Available endpoints:');
   console.log('  GET  /health - Health check');
+  console.log('  POST /api/session/start - Start transcript session');
+  console.log('  POST /api/session/end - End transcript session');
+  console.log('  GET  /api/transcripts/:userId - Get user transcripts');
   console.log('  POST /realtime-test - Test OpenAI Realtime API');
   console.log('  GET  /brain-status - Brain configuration status');
   console.log('  POST /aimee-chat - Multi-agent conversation endpoint');

@@ -117,6 +117,7 @@ class AImeeAgent(Agent):
         self.room_name = room_name
         self.is_reconnection = is_reconnection
         self._session_started = False
+        self.transcript_session_id: Optional[str] = None
 
     async def on_enter(self):
         """Called when agent becomes active"""
@@ -130,6 +131,21 @@ class AImeeAgent(Agent):
             logger.info("AImee agent entering session - RECONNECTION detected, sending welcome back message")
         else:
             logger.info("AImee agent entering session - NEW session, sending greeting")
+
+        # Start transcript session if backend router is enabled
+        if self.use_backend_router:
+            try:
+                session_response = await backend_client.start_session(
+                    user_id="voice-user",
+                    is_reconnection=self.is_reconnection
+                )
+                if session_response.success:
+                    self.transcript_session_id = session_response.session_id
+                    logger.info(f"Transcript session started: {self.transcript_session_id}")
+                else:
+                    logger.warning(f"Failed to start transcript session: {session_response.error}")
+            except Exception as e:
+                logger.error(f"Error starting transcript session: {e}")
 
         # Wait a moment for mobile app audio tracks to be fully established
         # This prevents the greeting from being sent before mobile can receive it
@@ -154,7 +170,8 @@ class AImeeAgent(Agent):
                         "source": "livekit",
                         "session_start": True,
                         "is_reconnection": self.is_reconnection
-                    }
+                    },
+                    session_id=self.transcript_session_id
                 )
 
                 if backend_response.success:
@@ -215,7 +232,8 @@ class AImeeAgent(Agent):
             backend_response = await backend_client.chat(
                 user_id="voice-user",
                 user_input=user_input,
-                context={"mode": "voice", "source": "livekit"}
+                context={"mode": "voice", "source": "livekit"},
+                session_id=self.transcript_session_id
             )
 
             if backend_response.success:
@@ -236,6 +254,21 @@ class AImeeAgent(Agent):
     async def on_exit(self):
         """Called when agent is replaced or session ends"""
         logger.info("AImee agent exiting session")
+
+        # End transcript session if one was started
+        if self.transcript_session_id:
+            try:
+                session_response = await backend_client.end_session(
+                    user_id="voice-user",
+                    session_id=self.transcript_session_id
+                )
+                if session_response.success:
+                    logger.info(f"Transcript session ended: {self.transcript_session_id}")
+                else:
+                    logger.warning(f"Failed to end transcript session: {session_response.error}")
+            except Exception as e:
+                logger.error(f"Error ending transcript session: {e}")
+
         # Close backend client session
         await backend_client.close()
 
