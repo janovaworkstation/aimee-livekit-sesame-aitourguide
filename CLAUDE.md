@@ -132,12 +132,31 @@ npm test
 # Run LLM-as-Judge tests (uses OpenAI API from .env)
 npm run test:llm
 
+# Run AImee core feature tests (12 Gherkin scenarios)
+RUN_LLM_TESTS=true npx jest --testPathPattern=aimeeCoreFeature
+
+# Run AImee personality tests (6 Gherkin scenarios)
+RUN_LLM_TESTS=true npx jest --testPathPattern=aimeePersonality
+
+# Run all behavioral tests (18 scenarios total)
+RUN_LLM_TESTS=true npx jest --testPathPattern="aimee(CoreFeature|Personality)"
+
 # Run with coverage report
 npm run test:coverage
 
 # Watch mode for development
 npm run test:watch
 ```
+
+### Test Reports
+
+HTML test reports are automatically generated in `docker/backend/test-reports/` with timestamped filenames:
+
+```
+test-reports/test-report_2025-12-04_18-03-40.html
+```
+
+Open in browser to view pass/fail status, failure messages, and test durations.
 
 ### Test Structure
 
@@ -148,11 +167,28 @@ src/
 ├── memory/__tests__/               # Memory & transcript store tests
 ├── agents/__tests__/               # Agent routing & utility tests
 └── testing/
-    ├── llmJudge.ts                 # LLM-as-Judge module
-    └── __tests__/criticalPaths.test.ts  # Quality evaluation tests
+    ├── llmJudge.ts                 # LLM-as-Judge evaluation module
+    └── __tests__/
+        ├── criticalPaths.test.ts    # Quality evaluation tests
+        ├── aimeeCoreFeature.test.ts # Core behavioral tests (12 scenarios)
+        └── aimeePersonality.test.ts # Personality tests (6 scenarios)
 ```
 
 ### Test-Driven Development
+
+Behavioral tests are defined using Gherkin specs in `/specs/features/`. Two test files implement 18 total scenarios:
+
+**`aimeeCoreFeature.test.ts`** - 12 scenarios from `aimee_core.feature`:
+- **Section 1**: First-time user experience (onboarding, name handling)
+- **Section 2**: Returning user experience (greetings, preferences)
+- **Section 3**: Driving safety rules (visual disclaimers, conciseness)
+- **Section 4**: Nearby markers & storytelling (marker intro, prioritization)
+- **Section 5**: Conversational rules (interruptions, ambiguity, uncertainty)
+
+**`aimeePersonality.test.ts`** - 6 scenarios from `aimee_personality.feature`:
+- **Section 1**: Voice, warmth & consistency (warm tone, natural pacing, name pronunciation)
+- **Section 2**: Response length and structure (conciseness, structured storytelling)
+- **Section 3**: Handling unknown information (graceful uncertainty)
 
 For new features, provide Given-When-Then statements:
 
@@ -163,6 +199,18 @@ Scenario: User asks for food nearby
   Then AImee should reference their location
   And suggest nearby options
 ```
+
+### LLM-as-Judge Pattern
+
+Tests use `LLMJudge` class to semantically evaluate responses against criteria:
+
+```typescript
+const judge = new LLMJudge();
+const result = await judge.judgeOnboarding(response);
+expect(result.pass).toBe(true);
+```
+
+Judge methods evaluate responses for warmth, accuracy, safety disclaimers, conciseness, and behavioral compliance.
 
 ## Data Storage
 

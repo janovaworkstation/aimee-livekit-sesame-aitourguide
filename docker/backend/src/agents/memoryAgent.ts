@@ -118,7 +118,9 @@ export class MemoryAgent extends BaseAgent {
       console.log('Memory Agent: Processing personalization/memory request');
 
       // Special handling for session start greeting check
-      if (input.includes('[SYSTEM: This is the initial session')) {
+      // Match various session start patterns
+      if (input.includes('[SYSTEM: This is the initial session') ||
+          input.includes('[SYSTEM: This is a new session')) {
         return await this.handleSessionStart(context);
       }
 
@@ -303,8 +305,8 @@ export class MemoryAgent extends BaseAgent {
         'No stored memory for this user.';
 
       const greetingPrompt = userMemory?.name ?
-        `Generate a warm, personalized greeting for ${userMemory.name} who is returning to use AImee. Vary the greeting to feel natural and personal. Acknowledge their return and that you remember them. Keep it conversational and friendly, not robotic. Include that you're Amy, their AI tour guide assistant, and that you're ready to help them discover interesting places.` :
-        `Generate a warm, welcoming first-time greeting for a new user. Introduce yourself as Amy, their AI tour guide assistant. Explain briefly what you do (help discover interesting places and stories) and ask what you should call them. Make it sound natural and friendly, not scripted.`;
+        `Generate a BRIEF, warm greeting for ${userMemory.name} who is returning to use AImee. Keep it to 1-2 sentences MAX. Just say welcome back and ask how you can help. Do NOT re-introduce yourself or explain what you do - they already know. Example: "Welcome back, ${userMemory.name}! Great to see you again. How can I help you explore today?"` :
+        `Generate a warm, welcoming first-time greeting for a new user. Introduce yourself as Amy, their AI tour guide assistant. Explain briefly what you do (help discover interesting places and stories) and ask what you should call them. Keep it concise for in-car listening. Make it sound natural and friendly, not scripted.`;
 
       const response = await runSmartAgentPrompt(
         this.name,

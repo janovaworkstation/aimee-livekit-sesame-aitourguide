@@ -11,8 +11,13 @@
 import fs from 'fs';
 import path from 'path';
 
-// Path to prompt files in the Docker container
-const PROMPTS_BASE_PATH = '/app/config/prompts';
+// Path to prompt files - configurable for testing vs Docker
+// In Docker: /app/config/prompts
+// For local testing: ../../../config/prompts (relative to this file)
+const PROMPTS_BASE_PATH = process.env.PROMPTS_PATH ||
+  (fs.existsSync('/app/config/prompts') ?
+    '/app/config/prompts' :
+    path.resolve(__dirname, '../../../../config/prompts'));
 
 /**
  * Generic prompt loader with error handling

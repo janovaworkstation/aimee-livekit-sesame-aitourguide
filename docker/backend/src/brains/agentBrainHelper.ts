@@ -88,6 +88,12 @@ function buildContextSection(context: ConversationContext): string {
     contextParts.push(`Location: ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
     if (nearestMarkerId) {
       contextParts.push(`Nearest marker: ${nearestMarkerId}`);
+      contextParts.push('NOTE: There is a historical marker nearby. You MUST:');
+      contextParts.push('1. Introduce it briefly and explain its significance');
+      contextParts.push('2. End with this EXACT question: "Would you like the short version or the deeper story?"');
+      contextParts.push('3. Focus on ONE marker only - do NOT list multiple markers by name');
+    } else {
+      contextParts.push('No historical markers nearby. Shift to regional context, nearby towns, parks, or landmarks.');
     }
   }
 
@@ -95,6 +101,9 @@ function buildContextSection(context: ConversationContext): string {
   if (context.tourState) {
     const { currentMarkerId, nextMarkerId, mode } = context.tourState;
     contextParts.push(`Tour mode: ${mode || 'idle'}`);
+    if (mode === 'drive') {
+      contextParts.push('IMPORTANT: User is DRIVING. Keep responses concise. For visual content (maps, lists), start with "When it\'s safe to look at your screen..."');
+    }
     if (currentMarkerId) contextParts.push(`Current marker: ${currentMarkerId}`);
     if (nextMarkerId) contextParts.push(`Next marker: ${nextMarkerId}`);
   }
@@ -102,6 +111,11 @@ function buildContextSection(context: ConversationContext): string {
   // User preferences
   if (context.preferences) {
     const { verbosity, tone } = context.preferences;
+    if (verbosity === 'short') {
+      contextParts.push('IMPORTANT: User prefers SHORT responses. Keep it concise and to the point.');
+    } else if (verbosity === 'long') {
+      contextParts.push('User prefers DETAILED responses. Provide more depth and context.');
+    }
     contextParts.push(`Response style: ${verbosity || 'medium'} length, ${tone || 'conversational'} tone`);
   }
 

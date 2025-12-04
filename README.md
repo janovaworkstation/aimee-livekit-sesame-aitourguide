@@ -219,6 +219,45 @@ Update `mobile/app/lib/config.ts` if needed:
 - Mute button properly controls microphone state
 - Natural conversation flow with tour guide personality
 
+### Backend Testing
+
+```bash
+cd docker/backend
+
+# Run all unit tests (fast, no API calls)
+npm test
+
+# Run LLM-as-Judge behavioral tests (requires OPENAI_API_KEY)
+npm run test:llm
+
+# Run AImee core feature tests (12 Gherkin scenarios)
+RUN_LLM_TESTS=true npx jest --testPathPattern=aimeeCoreFeature
+
+# Run AImee personality tests (6 Gherkin scenarios)
+RUN_LLM_TESTS=true npx jest --testPathPattern=aimeePersonality
+
+# Run all behavioral tests (18 scenarios total)
+RUN_LLM_TESTS=true npx jest --testPathPattern="aimee(CoreFeature|Personality)"
+```
+
+**Test Reports**: HTML reports are generated in `docker/backend/test-reports/` with timestamps for easy comparison between runs.
+
+**Behavioral Tests**: Tests validate AImee's responses against Gherkin specs in `/specs/features/`:
+
+- **Core Features** (`aimee_core.feature` - 12 scenarios):
+  - First-time and returning user experiences
+  - Driving safety rules and visual content disclaimers
+  - Historical marker introductions and storytelling
+  - Handling interruptions, ambiguity, and uncertainty
+
+- **Personality** (`aimee_personality.feature` - 6 scenarios):
+  - Voice warmth and conversational tone
+  - Natural pacing and sentence clarity
+  - Name pronunciation consistency ("Amy" not "A-I-M-E-E")
+  - Default conciseness with invitation for more detail
+  - Structured storytelling format
+  - Graceful handling of unknown information
+
 ### Multi-Device Testing
 
 Connect multiple devices to the same room to test:

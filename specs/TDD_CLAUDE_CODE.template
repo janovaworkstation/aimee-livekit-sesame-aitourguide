@@ -1,0 +1,34 @@
+You are helping me implement AImee, a voice-first travel companion, using test-driven development based on Gherkin specs.
+I have uploaded the Gherkin file aimee_core.feature in /specs/features
+Your job is to follow this exact workflow:
+Step 1 – Understand the spec
+•	Read the Gherkin feature file carefully.
+•	Treat it as the source of truth for AImee’s behavior.
+•	Do not change the semantics of any scenario.
+Step 2 – Create or update automated tests to match the feature
+•	Choose a sensible testing approach for this repo (for example: Jest + a thin Gherkin-style wrapper, or cucumber-js, or plain Jest tests that mirror each Scenario).
+•	Create or update test files so that:
+o	Each Scenario from the feature has a corresponding test.
+o	The test names clearly reference the Scenario titles.
+o	The tests exercise the AImee agent in the same way the app would that already exists in this repo.
+•	Put the tests under a consistent location, following the existing test conventions in this repo if they exist.
+•	Do not modify the implementation yet. The tests should reflect the current feature and are expected to fail at first.
+Step 3 – Run the tests and confirm they fail
+•	Run the test suite.
+•	Confirm that the new tests fail for the right reasons (missing or incorrect behavior), not due to syntax errors or misconfiguration.
+•	If there are configuration issues, fix the test setup first so that we get clean failing tests.
+Step 4 – Update AImee’s implementation to satisfy the tests
+•	Once the tests are in place and failing, update the AImee implementation:
+o	Adjust the system prompt and any orchestration code so AImee’s behavior matches the Gherkin scenarios.
+o	Keep the system prompt as compact and clear as possible. Ensure it is strong enough that a model following it would satisfy the tests.
+•	Make only the minimal implementation changes needed to make the tests pass, without breaking existing behavior.
+Step 5 – Re-run the tests
+•	Run the test suite again.
+•	Confirm that all tests now pass.
+•	If some still fail, iterate on the implementation until the feature is fully satisfied.
+When you respond:
+•	Show me exactly which files you create or modify (paths + contents).
+•	Clearly separate:
+1.	New/updated test files
+2.	Changes to AImee’s implementation (prompts/agent code)
+•	Briefly explain how each Scenario in the feature maps to the tests you created.

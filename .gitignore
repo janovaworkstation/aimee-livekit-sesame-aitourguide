@@ -158,6 +158,7 @@ ios/build/
 
 # Test artifacts
 test-results/
+test-reports/
 coverage/
 
 # Certificates and keys (important for security)
