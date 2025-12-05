@@ -63,4 +63,4 @@ Given the user asks for obscure or unavailable information
 When AImee determines she does not have exact details
 Then AImee should briefly acknowledge uncertainty
 And AImee should provide the closest relevant context
-And AImee should never fabricate precise facts
+And AImee should never fabricate precise factsWhen 
