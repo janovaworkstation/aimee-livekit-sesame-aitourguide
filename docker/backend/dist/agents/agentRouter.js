@@ -1,6 +1,6 @@
 "use strict";
 // AImee Multi-Agent Router
-// Phase 3: Routes user input to the most appropriate agent
+// Phase 9: Routes user input to the most appropriate agent using intent classification
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AgentRouter = void 0;
 exports.routeToAgent = routeToAgent;
@@ -9,6 +9,7 @@ const navigatorAgent_1 = require("./navigatorAgent");
 const historianAgent_1 = require("./historianAgent");
 const experienceAgent_1 = require("./experienceAgent");
 const memoryAgent_1 = require("./memoryAgent");
+const intentRouter_1 = require("../brain/intentRouter");
 /**
  * Multi-agent router that determines the best agent to handle user input
  */
@@ -67,21 +68,77 @@ class AgentRouter {
      * Select the most appropriate agent based on input and context
      */
     selectAgent(input, context) {
+        // Special handling for session start system messages
+        // Match both "new session" (from Python agent) and "initial session" (legacy)
+        // Also match reconnection messages
+        if (input.includes('[SYSTEM: This is a new session') ||
+            input.includes('[SYSTEM: This is the initial session') ||
+            input.includes('[SYSTEM: The user has just reconnected')) {
+            console.log('Agent Router: Session start/reconnect detected, routing to Memory agent for greeting');
+            const memoryAgent = this.agents.find(a => a.name === 'Memory');
+            if (memoryAgent) {
+                return {
+                    selectedAgent: memoryAgent,
+                    confidence: 1.0,
+                    alternativeAgents: [],
+                    reasoning: 'Session start/reconnect message - checking for stored user memory'
+                };
+            }
+        }
+        // Phase 9: Use intent router for initial classification
+        const intentAnalysis = intentRouter_1.SimpleIntentRouter.analyzeIntent(input);
+        console.log(`Agent Router: Intent analysis - ${intentRouter_1.SimpleIntentRouter.getSummary(intentAnalysis)}`);
         const candidateAgents = [];
-        // Evaluate each agent's ability to handle the input
-        for (const agent of this.agents) {
-            if (agent.canHandle(input, context)) {
-                let confidence = 0.5; // Base confidence for agents that can handle
-                // Get detailed intent match if available
-                const intentMatch = agent.getIntentMatch?.(input, context);
-                if (intentMatch) {
-                    confidence = intentMatch.confidence;
-                    candidateAgents.push({ agent, confidence, match: intentMatch });
+        // Map intent classifications to actual agent instances
+        const primaryIntent = intentAnalysis.primaryIntent;
+        const primaryAgent = this.agents.find(agent => agent.name === primaryIntent.agent);
+        if (primaryAgent && primaryAgent.canHandle(input, context)) {
+            candidateAgents.push({
+                agent: primaryAgent,
+                confidence: primaryIntent.confidence,
+                match: {
+                    confidence: primaryIntent.confidence,
+                    keywords: primaryIntent.matchedKeywords,
+                    priority: types_1.AgentPriority.HIGH
                 }
-                else {
-                    candidateAgents.push({ agent, confidence });
+            });
+            console.log(`Agent Router: ${primaryAgent.name} (PRIMARY INTENT) confidence: ${primaryIntent.confidence.toFixed(2)}`);
+        }
+        // Add alternative intents as candidates
+        for (const altIntent of intentAnalysis.alternativeIntents) {
+            if (altIntent.confidence > 0.2) { // Only consider alternatives with reasonable confidence
+                const altAgent = this.agents.find(agent => agent.name === altIntent.agent);
+                if (altAgent && altAgent.canHandle(input, context)) {
+                    candidateAgents.push({
+                        agent: altAgent,
+                        confidence: altIntent.confidence,
+                        match: {
+                            confidence: altIntent.confidence,
+                            keywords: altIntent.matchedKeywords,
+                            priority: types_1.AgentPriority.MEDIUM
+                        }
+                    });
+                    console.log(`Agent Router: ${altAgent.name} (ALTERNATIVE) confidence: ${altIntent.confidence.toFixed(2)}`);
                 }
-                console.log(`Agent Router: ${agent.name} can handle (confidence: ${confidence.toFixed(2)})`);
+            }
+        }
+        // Fallback: If no intent-based matches, use original canHandle logic
+        if (candidateAgents.length === 0) {
+            console.log('Agent Router: No intent matches found, falling back to canHandle evaluation');
+            for (const agent of this.agents) {
+                if (agent.canHandle(input, context)) {
+                    let confidence = 0.3; // Lower confidence for fallback
+                    // Get detailed intent match if available
+                    const intentMatch = agent.getIntentMatch?.(input, context);
+                    if (intentMatch) {
+                        confidence = Math.max(confidence, intentMatch.confidence);
+                        candidateAgents.push({ agent, confidence, match: intentMatch });
+                    }
+                    else {
+                        candidateAgents.push({ agent, confidence });
+                    }
+                    console.log(`Agent Router: ${agent.name} (FALLBACK) can handle (confidence: ${confidence.toFixed(2)})`);
+                }
             }
         }
         // Sort candidates by confidence (highest first)

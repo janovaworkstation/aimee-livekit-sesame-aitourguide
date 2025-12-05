@@ -8,11 +8,15 @@ AImee is an intelligent tour guide application that provides real-time voice con
 
 ### Features
 - ✅ Real-time speech-to-speech conversations
-- ✅ Natural tour guide personality
+- ✅ Multi-agent system (Navigator, Historian, Experience, Memory)
+- ✅ Natural tour guide personality with warmth and safety awareness
+- ✅ User memory and personalization with privacy controls
+- ✅ Trip memory vs long-term memory separation
 - ✅ Automatic greeting when users join
 - ✅ Mute/unmute controls for privacy
 - ✅ Low-latency audio processing
 - ✅ Cross-platform mobile support (iOS/Android)
+- ✅ Comprehensive test suite with LLM-as-Judge evaluation
 
 ## 🏗️ Architecture
 
@@ -125,9 +129,17 @@ aimee-livekit-sesame-aitourguide/
 │   │   ├── aimee_agent.py            # LiveKit Agents implementation
 │   │   ├── requirements.txt          # Python dependencies
 │   │   └── Dockerfile
-│   └── backend/                 # Node.js backend (legacy)
-│       ├── src/index.ts              # Express server
+│   └── backend/                 # Node.js multi-agent backend
+│       ├── src/
+│       │   ├── agents/               # Multi-agent system
+│       │   ├── memory/               # Memory & transcript storage
+│       │   ├── testing/              # LLM-as-Judge test framework
+│       │   └── index.ts              # Express server
 │       └── package.json
+├── specs/features/              # Gherkin behavioral specifications
+│   ├── aimee_core.feature       # Core autonomy & safety (11 scenarios)
+│   ├── aimee_personality.feature # Personality & tone (8 scenarios)
+│   └── aimee_memory.feature     # Memory & personalization (14 scenarios)
 ├── docker-compose.yml           # Service orchestration
 └── .env                        # Environment configuration
 ```
@@ -230,14 +242,17 @@ npm test
 # Run LLM-as-Judge behavioral tests (requires OPENAI_API_KEY)
 npm run test:llm
 
-# Run AImee core feature tests (12 Gherkin scenarios)
+# Run AImee core feature tests (11 Gherkin scenarios)
 RUN_LLM_TESTS=true npx jest --testPathPattern=aimeeCoreFeature
 
-# Run AImee personality tests (6 Gherkin scenarios)
+# Run AImee personality tests (8 Gherkin scenarios)
 RUN_LLM_TESTS=true npx jest --testPathPattern=aimeePersonality
 
-# Run all behavioral tests (18 scenarios total)
-RUN_LLM_TESTS=true npx jest --testPathPattern="aimee(CoreFeature|Personality)"
+# Run AImee memory tests (14 Gherkin scenarios)
+RUN_LLM_TESTS=true npx jest --testPathPattern=aimeeMemory
+
+# Run all behavioral tests (33 scenarios total)
+RUN_LLM_TESTS=true npx jest --testPathPattern="aimee(CoreFeature|Personality|Memory)"
 ```
 
 **Test Reports**: HTML reports are generated in `docker/backend/test-reports/` with timestamps for easy comparison between runs.

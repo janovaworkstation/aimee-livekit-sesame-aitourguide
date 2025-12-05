@@ -10,7 +10,12 @@
     "test": "jest",
     "test:coverage": "jest --coverage",
     "test:watch": "jest --watch",
-    "test:llm": "RUN_LLM_TESTS=true jest --testPathPattern=criticalPaths"
+    "test:all": "./run-all-tests.sh",
+    "test:unit": "jest --config=jest.config.unit.js",
+    "test:llm": "RUN_LLM_TESTS=true jest --testPathPattern=criticalPaths",
+    "test:llm:judge": "RUN_LLM_TESTS=true jest --config=jest.config.llm.js",
+    "test:core": "RUN_LLM_TESTS=true jest --config=jest.config.core.js",
+    "test:personality": "RUN_LLM_TESTS=true jest --config=jest.config.personality.js"
   },
   "dependencies": {
     "dotenv": "^16.3.1",

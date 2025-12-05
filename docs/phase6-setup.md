@@ -1,11 +1,13 @@
-# Phase 6 Setup: Realtime Voice Loop
+# Phase 6 Setup: Real-time Voice Loop
 
 ## Overview
-Phase 6 implements true speech-to-speech conversation using OpenAI Realtime API bridged through LiveKit.
+
+Phase 6 implements true speech-to-speech conversation using OpenAI's GPT-4o-mini model bridged through LiveKit Agents framework.
 
 ## Architecture
+
 ```
-Mobile App (User) ←→ LiveKit Cloud ←→ Agent Container ←→ OpenAI Realtime API
+Mobile App (User) ←→ LiveKit Cloud ←→ Agent Container ←→ OpenAI API (GPT-4o-mini)
 ```
 
 ## Setup Instructions
@@ -17,7 +19,7 @@ cp .env.example .env
 ```
 
 Fill in your credentials:
-- `OPENAI_API_KEY`: Your OpenAI API key with Realtime API access
+- `OPENAI_API_KEY`: Your OpenAI API key
 - `LIVEKIT_URL`: Your LiveKit server URL (from existing Phase 1 setup)
 - `LIVEKIT_API_KEY`: Your LiveKit API key
 - `LIVEKIT_API_SECRET`: Your LiveKit API secret
@@ -25,10 +27,10 @@ Fill in your credentials:
 ### 2. Start Services
 ```bash
 # Start backend and agent containers
-docker-compose up --build
+docker compose up --build
 
 # Or start individual services
-docker-compose up backend agent
+docker compose up backend agent
 ```
 
 ### 3. Mobile App
@@ -55,14 +57,14 @@ The mobile app should already be configured from previous phases. Ensure:
 ## Troubleshooting
 
 ### Agent won't connect
-- Check environment variables in docker-compose logs
+- Check environment variables in docker compose logs
 - Verify LIVEKIT_API_KEY and LIVEKIT_API_SECRET are correct
-- Ensure OpenAI API key has Realtime API access
+- Ensure OpenAI API key is valid
 
 ### No audio from AImee
 - Check mobile app shows "AImee Connected"
 - Verify microphone is enabled and recording
-- Check agent logs for OpenAI Realtime connection errors
+- Check agent logs for OpenAI API connection errors
 
 ### Poor audio quality
 - Check network connection quality
@@ -73,25 +75,27 @@ The mobile app should already be configured from previous phases. Ensure:
 
 ### Agent Development
 ```bash
-# Work on agent code with hot reload
+# Work on agent code
 cd docker/agent
-npm run dev
+# Edit aimee_agent.py and rebuild container
+docker compose build agent
+docker compose up agent
 ```
 
 ### Mobile Development
 The mobile app supports hot reload via Expo dev server as in previous phases.
 
-## What's Different from Phase 4?
+## What's Different from Previous Phases?
 
-- **No more device TTS**: Uses OpenAI Realtime for speech generation
-- **No more REST endpoints**: Pure streaming audio pipeline
-- **Real-time conversation**: Much lower latency than text→TTS pipeline
-- **Agent container**: New LiveKit agent bridges audio to OpenAI
+- **OpenAI Integration**: Uses GPT-4o-mini with STT/TTS for voice processing
+- **LiveKit Agents**: Python-based agent framework handles voice pipeline
+- **Real-time conversation**: Low latency streaming audio
+- **Agent container**: Dedicated container bridges audio to OpenAI
 
 ## Next Steps
 
 After Phase 6 is working:
-- Integrate GPS context into Realtime sessions
-- Add multi-agent brain routing to Realtime
+- Integrate GPS context into voice sessions
+- Add multi-agent brain routing
 - Implement voice activity detection improvements
 - Add conversation memory and context persistence

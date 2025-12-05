@@ -1,4 +1,4 @@
-# AImee File & Folder Architecture (Docker + Runpod Edition)
+# AImee File & Folder Architecture
 
 ```
 aimee-poc/
@@ -50,7 +50,10 @@ aimee-poc/
 │   │   │   ├── testing/
 │   │   │   │   ├── llmJudge.ts
 │   │   │   │   └── __tests__/
-│   │   │   │       └── criticalPaths.test.ts
+│   │   │   │       ├── criticalPaths.test.ts
+│   │   │   │       ├── aimeeCoreFeature.test.ts
+│   │   │   │       ├── aimeePersonality.test.ts
+│   │   │   │       └── aimeeMemory.test.ts
 │   │   │   └── rag/
 │   │   └── package.json
 │   │
@@ -75,13 +78,16 @@ aimee-poc/
     ├── architecture.md
     ├── file_structure.md
     ├── roadmap.md
-    └── tech_stack.md
+    ├── tech_stack.md
+    ├── phase6-setup.md
+    └── ios_dev_setup.md
 ```
 
-### Notes
-- All backend code is containerized.
-- docker-compose controls backend, agent, sesame, db.
-- Runpod hosts the sesame container.
-- Mobile app remains outside Docker (RN runs on device).
-- User memory and transcripts stored in JSON files in rag-db volume.
-- Testing framework uses Jest with LLM-as-Judge for quality evaluation.
+## Notes
+
+- All backend code is containerized
+- docker compose controls backend, agent, and database volumes
+- Mobile app remains outside Docker (React Native runs on device)
+- User memory and transcripts stored in JSON files in rag-db volume
+- Testing framework uses Jest with LLM-as-Judge for behavioral evaluation (33 scenarios across core, personality, and memory features)
+- Sesame AI runs on Runpod GPU instances for standard intelligence tier

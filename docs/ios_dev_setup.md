@@ -1,6 +1,6 @@
 # AImee iOS Development & Deployment Guide
 
-## For Expo + EAS + Dev Client + Ngrok + Local Docker Backend
+## Development Setup for iOS with Expo, EAS, and Docker Backend
 
 ## Overview
 
@@ -34,20 +34,20 @@ The mobile app connects to them via local IP or ngrok during development.
 
 Before building the iOS app for the first time:
 
-### Install tools
+### Install Tools
 
 ```bash
 npm install -g eas-cli
-brew install ngrok
+brew install ngrok  # Optional for external testing
 ```
 
-### Log into Expo
+### Log Into Expo
 
 ```bash
 eas login
 ```
 
-### Apple Developer setup
+### Apple Developer Setup
 
 Visit App Store Connect and ensure:
 
@@ -66,21 +66,21 @@ In `mobile/app.json`, AImee must have:
 - Permissions for microphone & location
 - dev-client plugin enabled
 
-### Example (yours)
+Example configuration:
 
 ```json
 "ios": {
   "supportsTablet": true,
   "bundleIdentifier": "com.virel.aimee",
   "infoPlist": {
-    "NSLocationWhenInUseUsageDescription": "AImee needs location access..."
+    "NSLocationWhenInUseUsageDescription": "AImee needs location access to provide location-based tour information."
   }
 }
 ```
 
 ## 4. Configure eas.json
 
-Run:
+Run the following command:
 
 ```bash
 cd mobile
@@ -117,9 +117,9 @@ This is your permanent development shell.
 
 ## 6. Day-to-Day Development Workflow
 
-This is your new 2-terminal daily workflow.
+Use this 2-terminal workflow for daily development.
 
-### Terminal 1 — run backend + agent
+### Terminal 1 — Run Backend + Agent
 
 From the project root:
 
@@ -130,7 +130,7 @@ docker compose up
 
 **Use --build only if backend code changed.**
 
-### Terminal 2 — start Expo dev server for the dev client
+### Terminal 2 — Start Expo Dev Server
 
 From the mobile folder:
 
@@ -139,7 +139,7 @@ cd /Users/jlusenhop/Developer/aimee-livekit-sesame-aitourguide/mobile
 npx expo start --dev-client
 ```
 
-### On your iPhone
+### On Your iPhone
 
 - Open **AImee POC** (not Expo Go)
 - If it doesn't connect:
@@ -149,13 +149,13 @@ npx expo start --dev-client
 
 From this point forward, every JS/TS change hot-reloads directly into your installed dev app.
 
-### You do NOT run
+### Commands You Should NOT Use
 
-- `npx expo run:ios`
-- The simulator (unless testing there specifically)
-- Expo Go (not needed anymore)
+- `npx expo run:ios` (rebuilds native code unnecessarily)
+- The simulator (unless specifically testing simulator behavior)
+- Expo Go (replaced by dev client)
 
-## 7. Optional — Reset Metro Bundler Cache
+## 7. Optional: Reset Metro Bundler Cache
 
 Only use this when debugging stale bundles or odd errors:
 
@@ -163,17 +163,17 @@ Only use this when debugging stale bundles or odd errors:
 npx expo start --dev-client --clear
 ```
 
-## 8. Backend access for testers (ngrok)
+## 8. Backend Access for External Testers (ngrok)
 
 If other testers install the app, they need access to your backend.
 
-### Step 1 — Run backend locally
+### Step 1: Run Backend Locally
 
 ```bash
 docker compose up
 ```
 
-### Step 2 — Start ngrok
+### Step 2: Start ngrok Tunnel
 
 ```bash
 ngrok http 3000
@@ -185,7 +185,7 @@ It prints something like:
 https://1e039b0f144b.ngrok-free.app → http://localhost:3000
 ```
 
-### Step 3 — Configure mobile app to use this URL
+### Step 3: Configure Mobile App
 
 In your `.env` (root), set:
 
@@ -199,11 +199,11 @@ Then restart:
 - Expo dev server
 - The AImee app
 
-### When testers use TestFlight or their own dev build
+### TestFlight Distribution
 
 They will hit the ngrok URL automatically.
 
-## 9. When You **Do** Need to Rebuild with EAS
+## 9. When to Rebuild with EAS
 
 You must rebuild using EAS when:
 
@@ -212,14 +212,14 @@ You must rebuild using EAS when:
 - You need a TestFlight build
 - You add/remove Expo plugins
 
-You do **NOT** need to rebuild for:
+You do NOT need to rebuild for:
 
 - UI changes
 - Prompt changes
 - Business logic / agent logic changes
 - Audio pipeline tweaks inside JS/TS
 - Memory / state updates
-- Most backend config
+- Most backend configuration changes
 
 ## 10. Testing on Long Road Trips
 
@@ -237,7 +237,7 @@ Later, when cloud hosting is set up, you won't need to bring the Mac.
 
 ## 11. Summary Cheat Sheet
 
-### One-time
+### One-Time Setup
 
 ```bash
 eas build --profile development --platform ios
@@ -246,13 +246,13 @@ eas build --profile development --platform ios
 - Install dev client on iPhone
 - Accept Apple agreements
 
-### Everyday
+### Daily Development
 
 - **Terminal 1** → `docker compose up`
 - **Terminal 2** → `npx expo start --dev-client`
 - Open **AImee POC** on iPhone
 
-### For testers
+### External Testing
 
 ```bash
 ngrok http 3000

@@ -45,11 +45,87 @@ const openaiRealtimeEngine_1 = require("./engines/openaiRealtimeEngine");
 const config_1 = require("./brains/config");
 const agentRouter_1 = require("./agents/agentRouter");
 const types_1 = require("./agents/types");
+const transcriptStore_1 = require("./memory/transcriptStore");
 const app = (0, express_1.default)();
 const port = 3000;
 app.use(express_1.default.json());
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', service: 'aimee-backend' });
+});
+// Session management endpoints for transcript storage
+app.post('/api/session/start', async (req, res) => {
+    try {
+        const { userId, isReconnection } = req.body;
+        if (!userId || typeof userId !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid "userId" field'
+            });
+        }
+        const sessionId = await (0, transcriptStore_1.startSession)(userId, isReconnection || false);
+        res.json({
+            success: true,
+            sessionId,
+            userId,
+            isReconnection: isReconnection || false,
+            timestamp: new Date().toISOString()
+        });
+    }
+    catch (error) {
+        console.error('Session start error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to start session',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+app.post('/api/session/end', async (req, res) => {
+    try {
+        const { userId, sessionId } = req.body;
+        if (!userId || !sessionId) {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing userId or sessionId'
+            });
+        }
+        await (0, transcriptStore_1.endSession)(userId, sessionId);
+        res.json({
+            success: true,
+            sessionId,
+            userId,
+            timestamp: new Date().toISOString()
+        });
+    }
+    catch (error) {
+        console.error('Session end error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to end session',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+app.get('/api/transcripts/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const limit = req.query.limit ? parseInt(req.query.limit) : undefined;
+        const sessions = await (0, transcriptStore_1.getSessionTranscripts)(userId, limit);
+        res.json({
+            success: true,
+            userId,
+            sessionCount: sessions.length,
+            sessions
+        });
+    }
+    catch (error) {
+        console.error('Get transcripts error:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get transcripts',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
 });
 // OpenAI Realtime API test endpoint
 app.post('/realtime-test', async (req, res) => {
@@ -125,7 +201,7 @@ app.get('/brain-status', (req, res) => {
 // AImee Multi-Agent Chat Endpoint
 app.post('/aimee-chat', async (req, res) => {
     try {
-        const { userId, input, context: contextOverrides } = req.body;
+        const { userId, input, context: contextOverrides, sessionId } = req.body;
         // Validate required fields
         if (!userId || typeof userId !== 'string') {
             return res.status(400).json({
@@ -141,12 +217,23 @@ app.post('/aimee-chat', async (req, res) => {
         }
         console.log('AImee Chat: Processing request for user:', userId);
         console.log('AImee Chat: Input:', input.substring(0, 100) + (input.length > 100 ? '...' : ''));
+        // Record user message to transcript (if sessionId provided)
+        if (sessionId) {
+            // Don't record system messages to transcript
+            if (!input.startsWith('[SYSTEM:')) {
+                await (0, transcriptStore_1.addMessage)(userId, sessionId, 'user', input);
+            }
+        }
         // Build conversation context
         const context = (0, types_1.createDefaultContext)(userId, contextOverrides || {});
         // Add user input to conversation history
         const contextWithHistory = (0, types_1.addToHistory)(context, 'user', input);
         // Route to appropriate agent
         const result = await (0, agentRouter_1.routeToAgent)(input, contextWithHistory);
+        // Record assistant response to transcript (if sessionId provided)
+        if (sessionId) {
+            await (0, transcriptStore_1.addMessage)(userId, sessionId, 'assistant', result.text);
+        }
         // Add assistant response to history for next interactions
         const finalContext = (0, types_1.addToHistory)(contextWithHistory, 'assistant', result.text);
         console.log('AImee Chat: Response generated by', result.metadata?.routing?.selectedAgent || 'unknown agent');
@@ -157,6 +244,7 @@ app.post('/aimee-chat', async (req, res) => {
             metadata: {
                 ...result.metadata,
                 userId: userId,
+                sessionId: sessionId || null,
                 timestamp: new Date().toISOString(),
                 conversationLength: finalContext.history.length
             }
@@ -202,14 +290,96 @@ app.post('/aimee-chat/debug', async (req, res) => {
         });
     }
 });
+// AImee Arrival Endpoint - GPS-triggered location narratives
+app.post('/aimee-arrival', async (req, res) => {
+    try {
+        const { userId, markerId, markerName, location, mode } = req.body;
+        // Validate required fields
+        if (!userId || typeof userId !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid "userId" field in request body'
+            });
+        }
+        if (!markerId || typeof markerId !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid "markerId" field in request body'
+            });
+        }
+        if (!markerName || typeof markerName !== 'string') {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid "markerName" field in request body'
+            });
+        }
+        if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+            return res.status(400).json({
+                success: false,
+                error: 'Missing or invalid "location" field with lat/lng coordinates'
+            });
+        }
+        console.log('AImee Arrival: Processing arrival at marker:', markerName);
+        console.log('AImee Arrival: User:', userId, 'Location:', location, 'Mode:', mode);
+        // Build conversation context for arrival
+        const context = (0, types_1.createDefaultContext)(userId, {
+            location: {
+                lat: location.lat,
+                lng: location.lng,
+                nearestMarkerId: markerId
+            },
+            tourState: {
+                currentMarkerId: markerId,
+                mode: mode || 'drive'
+            },
+            preferences: {
+                verbosity: 'medium',
+                tone: 'conversational'
+            }
+        });
+        // Construct arrival-specific input prompt
+        const arrivalInput = `We just arrived at the marker "${markerName}". Please provide an engaging arrival narrative about this place. Share interesting details, history, or recommendations that would enhance the visitor's experience here.`;
+        // Route through the multi-agent system
+        const result = await (0, agentRouter_1.routeToAgent)(arrivalInput, context);
+        console.log('AImee Arrival: Narrative generated by', result.metadata?.routing?.selectedAgent || 'unknown agent');
+        res.json({
+            success: true,
+            markerId,
+            markerName,
+            agent: result.metadata?.routing?.selectedAgent || result.metadata?.agent || 'unknown',
+            response: result.text,
+            metadata: {
+                ...result.metadata,
+                userId,
+                markerId,
+                location,
+                mode: mode || 'drive',
+                timestamp: new Date().toISOString(),
+                arrivalType: 'gps_triggered'
+            }
+        });
+    }
+    catch (error) {
+        console.error('AImee Arrival: Error processing arrival request:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Internal server error during arrival processing',
+            details: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
 app.listen(port, () => {
     console.log(`AImee Backend running on port ${port}`);
     console.log('Available endpoints:');
     console.log('  GET  /health - Health check');
+    console.log('  POST /api/session/start - Start transcript session');
+    console.log('  POST /api/session/end - End transcript session');
+    console.log('  GET  /api/transcripts/:userId - Get user transcripts');
     console.log('  POST /realtime-test - Test OpenAI Realtime API');
     console.log('  GET  /brain-status - Brain configuration status');
     console.log('  POST /aimee-chat - Multi-agent conversation endpoint');
     console.log('  POST /aimee-chat/debug - Agent routing debug information');
+    console.log('  POST /aimee-arrival - GPS-triggered arrival narratives');
     // Log brain configuration on startup
     try {
         const brain = (0, config_1.getBrainForEnvironment)();

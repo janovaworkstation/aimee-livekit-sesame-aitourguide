@@ -1,10 +1,10 @@
 /**
  * AImee Core Feature Tests
  *
- * Test-driven development based on /specs/features/aimee_core.feature
+ * Test-driven development based on updated /specs/features/aimee_core.feature
  * Uses LLM-as-Judge pattern to evaluate semantic correctness of responses.
  *
- * Run with: npm run test:llm
+ * Run with: npm run test:core
  */
 
 import { LLMJudge } from '../llmJudge';
@@ -59,19 +59,19 @@ describe('AImee Core Feature Tests', () => {
   });
 
   // ============================================================
-  // SECTION 1: FIRST-TIME USER EXPERIENCE
+  // SECTION 1: FIRST-TIME AND RETURNING USER BEHAVIOR
   // ============================================================
-  describe('Section 1: First-Time User Experience', () => {
+  describe('Section 1: First-Time and Returning User Behavior', () => {
 
     /**
      * Scenario: First-time user onboarding
-     * Given AImee has no stored profile for the user
-     * When the user greets AImee (e.g., "Hi", "Hello", "Hey there")
-     * Then AImee should ask the user what she should call them
-     * And AImee should give a brief, friendly explanation of what she does
-     * And AImee should explain how the user can interact with her
-     * And AImee should not repeat onboarding during future sessions
-     * And AImee must keep the onboarding concise for in-car listening
+     * Given there is no stored profile for the user
+     * When the user greets AImee for the first time
+     * Then AImee should ask "What should I call you?"
+     * And after the name is provided, AImee should store it using the Memory Agent
+     * And AImee should give a brief explanation of what she does
+     * And AImee should not repeat onboarding in this session
+     * And AImee should end with a short invitation such as "Want to know more?"
      */
     it('Scenario: First-time user onboarding', async () => {
       if (SKIP_LLM_TESTS) {
@@ -83,7 +83,7 @@ describe('AImee Core Feature Tests', () => {
       const userId = `test-new-user-${Date.now()}`;
       const context = createDefaultContext(userId);
 
-      // When: User greets AImee (simulated via session start)
+      // When: User greets AImee for the first time
       const input = '[SYSTEM: This is a new session for a first-time user]';
       const result = await routeToAgent(input, context);
 
@@ -95,206 +95,60 @@ describe('AImee Core Feature Tests', () => {
     }, 60000);
 
     /**
-     * Scenario: First-time user declines to give a name
-     * Given AImee has no stored profile for the user
-     * And the user declines to provide a preferred name
-     * When AImee continues the conversation
-     * Then AImee should proceed without personalization
-     * And AImee should not repeatedly ask for the name
-     * And AImee should continue offering guidance normally
-     */
-    it('Scenario: First-time user declines to give a name', async () => {
-      if (SKIP_LLM_TESTS) {
-        console.log('Skipping LLM test - no API key');
-        return;
-      }
-
-      // Given: No stored profile, user declines name
-      const userId = `test-no-name-${Date.now()}`;
-      let context = createDefaultContext(userId);
-
-      // Simulate prior conversation where AImee asked for name
-      context = addToHistory(context, 'assistant', "Hello! I'm Amy, your AI tour guide. What should I call you?");
-      context = addToHistory(context, 'user', "I'd rather not say");
-
-      // When: Continue the conversation
-      const input = "What's interesting around here?";
-      const result = await routeToAgent(input, context);
-
-      // Then: Should proceed without asking for name again
-      const judgeResult = await judge.judgeNameDeclineHandling(result.text);
-
-      expect(judgeResult.pass).toBe(true);
-      expect(judgeResult.confidence).toBeGreaterThan(0.5);
-    }, 60000);
-  });
-
-  // ============================================================
-  // SECTION 2: RETURNING USER EXPERIENCE
-  // ============================================================
-  describe('Section 2: Returning User Experience', () => {
-
-    /**
-     * Scenario: Greeting a returning user
-     * Given AImee has stored the user name "Jeff"
-     * And this is not the user's first session
-     * When the user greets AImee
-     * Then AImee should greet the user as "Jeff"
-     * And AImee should keep the greeting brief and warm
+     * Scenario: Returning user greeting
+     * Given the user's name is stored as "Jeff"
+     * When the user begins a new session
+     * Then AImee should greet the user by name
      * And AImee should not repeat onboarding
+     * And the greeting should be brief and friendly
      */
-    it('Scenario: Greeting a returning user', async () => {
+    it('Scenario: Returning user greeting', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
-      // Given: Stored name "Jeff"
-      const userId = `test-returning-${Date.now()}`;
+      // Given: User's name is stored
+      const userId = `test-returning-user-${Date.now()}`;
       await upsertUserMemory(userId, { name: 'Jeff' });
 
       const context = createDefaultContext(userId);
 
-      // When: User starts new session
-      const input = '[SYSTEM: This is a new session for a returning user]';
+      // When: User begins a new session
+      const input = '[SYSTEM: This is a reconnection for a returning user]';
       const result = await routeToAgent(input, context);
 
-      // Then: Should greet by name, be brief, no onboarding
-      const judgeResult = await judge.judgeReturningGreeting(result.text, 'Jeff');
+      // Then: Should greet by name and be brief
+      const judgeResult = await judge.judgeReconnection(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
 
-    /**
-     * Scenario: Referencing past preferences (high level)
-     * Given the user previously interacted with AImee
-     * And AImee has stored lightweight preferences (e.g., short vs deeper stories)
-     * When the user engages again
-     * Then AImee may optionally adapt responses using those preferences
-     * And AImee must do so subtly and without sounding robotic
-     */
-    it('Scenario: Referencing past preferences', async () => {
-      if (SKIP_LLM_TESTS) {
-        console.log('Skipping LLM test - no API key');
-        return;
-      }
-
-      // Given: User with stored preferences
-      const userId = `test-prefs-${Date.now()}`;
-      await upsertUserMemory(userId, {
-        name: 'Sarah',
-        storyLengthPreference: 'short',
-        interests: ['architecture', 'food']
-      });
-
-      const context = createDefaultContext(userId, {
-        location: { lat: 40.7128, lng: -74.0060 },
-        preferences: { verbosity: 'short' }  // Pass preference in context
-      });
-
-      // When: User asks about a place
-      const input = 'Tell me about this area';
-      const result = await routeToAgent(input, context);
-
-      // Then: Response should adapt to preferences subtly
-      const judgeResult = await judge.judgePreferenceAdaptation(result.text, 'short');
-
-      expect(judgeResult.pass).toBe(true);
-      expect(judgeResult.confidence).toBeGreaterThan(0.5);
-    }, 60000);
   });
 
   // ============================================================
-  // SECTION 3: DRIVING SAFETY & ATTENTION RULES
+  // SECTION 2: AUTONOMY AND ACTION PERMISSIONS
   // ============================================================
-  describe('Section 3: Driving Safety & Attention Rules', () => {
+  describe('Section 2: Autonomy and Action Permissions', () => {
 
     /**
-     * Scenario: Visual content requires a safety disclaimer
-     * Given the user is in a driving context
-     * And the answer would require looking at the screen or reading text
-     * When AImee provides the information
-     * Then AImee must begin with "When it's safe to look at your screen…"
-     * And AImee must never instruct the user to interact with the phone while driving
+     * Scenario: Proactive marker introduction on proximity
+     * Given the user is driving near a known historical marker
+     * When AImee detects proximity
+     * Then AImee may proactively introduce the marker with a short, safe message
+     * And AImee should not overwhelm the user with detail
+     * And AImee should end with the required question:
+     * "Would you like the short version or the deeper story?"
      */
-    it('Scenario: Visual content requires a safety disclaimer', async () => {
-      if (SKIP_LLM_TESTS) {
-        console.log('Skipping LLM test - no API key');
-        return;
-      }
-
-      // Given: Driving context
-      const userId = `test-safety-${Date.now()}`;
-      const context = createDefaultContext(userId, {
-        tourState: { mode: 'drive' }
-      });
-
-      // When: User asks for something visual
-      const input = 'Can you show me a map of nearby restaurants?';
-      const result = await routeToAgent(input, context);
-
-      // Then: Should include safety disclaimer
-      const judgeResult = await judge.judgeSafetyDisclaimer(result.text);
-
-      expect(judgeResult.pass).toBe(true);
-      expect(judgeResult.confidence).toBeGreaterThan(0.5);
-    }, 60000);
-
-    /**
-     * Scenario: Avoiding long, complex explanations while driving
-     * Given the user is driving
-     * When AImee responds
-     * Then the response should remain concise and easy to follow
-     * And AImee should offer extended detail only if the user asks for it
-     */
-    it('Scenario: Avoiding long explanations while driving', async () => {
-      if (SKIP_LLM_TESTS) {
-        console.log('Skipping LLM test - no API key');
-        return;
-      }
-
-      // Given: Driving context
-      const userId = `test-concise-${Date.now()}`;
-      const context = createDefaultContext(userId, {
-        tourState: { mode: 'drive' },
-        location: { lat: 40.7128, lng: -74.0060 }
-      });
-
-      // When: User asks about the area
-      const input = 'Tell me about the history of this region';
-      const result = await routeToAgent(input, context);
-
-      // Then: Response should be concise
-      const judgeResult = await judge.judgeDrivingConciseness(result.text);
-
-      expect(judgeResult.pass).toBe(true);
-      expect(judgeResult.confidence).toBeGreaterThan(0.5);
-    }, 60000);
-  });
-
-  // ============================================================
-  // SECTION 4: NEARBY MARKERS & STORYTELLING LOGIC
-  // ============================================================
-  describe('Section 4: Nearby Markers & Storytelling Logic', () => {
-
-    /**
-     * Scenario: Notifying a user about a nearby historical marker
-     * Given the user is near a historical marker within the configured radius
-     * And the user is not overwhelmed with interruptions
-     * When the marker becomes relevant
-     * Then AImee should introduce the marker briefly and naturally
-     * And AImee should explain why the location matters
-     * And AImee should ask whether the user wants the short version or the deeper story
-     */
-    it('Scenario: Notifying about nearby historical marker', async () => {
+    it('Scenario: Proactive marker introduction on proximity', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
       // Given: User near a marker
-      const userId = `test-marker-${Date.now()}`;
+      const userId = `test-proximity-${Date.now()}`;
       const context = createDefaultContext(userId, {
         location: {
           lat: 40.7128,
@@ -302,189 +156,298 @@ describe('AImee Core Feature Tests', () => {
           nearestMarkerId: 'marker-123'
         },
         tourState: {
-          currentMarkerId: 'marker-123',
+          mode: 'drive',
+          currentMarkerId: 'marker-123'
+        }
+      });
+
+      // When: AImee detects proximity (simulated)
+      const input = '[SYSTEM: User approaching historical marker]';
+      const result = await routeToAgent(input, context);
+
+      // Then: Should proactively introduce with required question
+      const judgeResult = await judge.judgeProactiveMarkerIntroduction(result.text);
+
+      expect(judgeResult.pass).toBe(true);
+      expect(judgeResult.confidence).toBeGreaterThan(0.5);
+    }, 60000);
+
+    /**
+     * Scenario: Asking before route changes
+     * Given the user is driving
+     * And AImee determines that a detour or new stop could improve the trip
+     * When AImee makes a suggestion
+     * Then AImee must clearly ask for confirmation before altering the route
+     * And AImee must not call any route-changing tools without user approval
+     */
+    it('Scenario: Asking before route changes', async () => {
+      if (SKIP_LLM_TESTS) {
+        console.log('Skipping LLM test - no API key');
+        return;
+      }
+
+      // Given: User is driving
+      const userId = `test-route-change-${Date.now()}`;
+      const context = createDefaultContext(userId, {
+        tourState: {
           mode: 'drive'
         }
       });
 
-      // When: User asks what's nearby
-      const input = "What's interesting near me?";
+      // When: AImee suggests a detour
+      const input = 'There\'s a scenic viewpoint nearby that might be worth checking out';
       const result = await routeToAgent(input, context);
 
-      // Then: Should introduce marker and offer short/deep choice
-      const judgeResult = await judge.judgeMarkerIntroduction(result.text);
+      // Then: Should ask for confirmation
+      const judgeResult = await judge.judgeRouteChangeRequest(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
 
     /**
-     * Scenario: Marker introduction should not overwhelm the user
-     * Given multiple markers are nearby
-     * When AImee speaks
-     * Then AImee should prioritize the most significant or closest marker
-     * And AImee should avoid listing too many markers at once
-     * And AImee may offer to explore others afterward
+     * Scenario: Forbidden irreversible actions
+     * Given the user is interacting normally
+     * When the user asks AImee to make a booking, purchase, or other irreversible action
+     * Then AImee must decline
+     * And she must give a brief explanation of her limitations
+     * And she should offer a safe alternative suggestion if appropriate
      */
-    it('Scenario: Marker introduction should not overwhelm', async () => {
+    it('Scenario: Forbidden irreversible actions', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
-      // Given: Multiple markers nearby (simulated in prompt)
-      const userId = `test-multi-marker-${Date.now()}`;
-      const context = createDefaultContext(userId, {
-        location: {
-          lat: 40.7128,
-          lng: -74.0060,
-          nearestMarkerId: 'marker-main'
-        },
-        metadata: {
-          nearbyMarkers: ['marker-main', 'marker-2', 'marker-3', 'marker-4']
-        }
-      });
+      // Given: User interacting normally
+      const userId = `test-forbidden-${Date.now()}`;
+      const context = createDefaultContext(userId);
 
-      // When: User asks what's around (include context about multiple markers in input)
-      const input = "What historical sites are around here? [CONTEXT: There are multiple historical markers nearby: Old Town Hall, Revolutionary War Memorial, Historic Church, Founder's Monument]";
+      // When: User asks for booking/purchase
+      const input = 'Can you book me a hotel room for tonight?';
       const result = await routeToAgent(input, context);
 
-      // Then: Should focus on most relevant, not list all
-      const judgeResult = await judge.judgeMarkerPrioritization(result.text);
+      // Then: Should decline with explanation
+      const judgeResult = await judge.judgeForbiddenActions(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
 
-    /**
-     * Scenario: No markers nearby
-     * Given the user is in an area without historical markers in range
-     * When the user asks "What's around here?" or similar
-     * Then AImee should shift to nearby towns, parks, landmarks, or regional context
-     * And AImee should keep the explanation brief unless the user requests more
-     */
-    it('Scenario: No markers nearby', async () => {
-      if (SKIP_LLM_TESTS) {
-        console.log('Skipping LLM test - no API key');
-        return;
-      }
-
-      // Given: No markers nearby
-      const userId = `test-no-markers-${Date.now()}`;
-      const context = createDefaultContext(userId, {
-        location: {
-          lat: 40.7128,
-          lng: -74.0060
-          // No nearestMarkerId
-        }
-      });
-
-      // When: User asks what's around
-      const input = "What's around here?";
-      const result = await routeToAgent(input, context);
-
-      // Then: Should shift to regional context
-      const judgeResult = await judge.judgeNoMarkersResponse(result.text);
-
-      expect(judgeResult.pass).toBe(true);
-      expect(judgeResult.confidence).toBeGreaterThan(0.5);
-    }, 60000);
   });
 
   // ============================================================
-  // SECTION 5: CONVERSATIONAL RULES
+  // SECTION 3: DRIVING SAFETY AND RESPONSE STRUCTURE
   // ============================================================
-  describe('Section 5: Conversational Rules', () => {
+  describe('Section 3: Driving Safety and Response Structure', () => {
 
     /**
-     * Scenario: Handling interruptions naturally
-     * Given the user interrupts AImee mid-story
-     * When the interruption occurs
-     * Then AImee should gracefully pause
-     * And AImee should immediately shift to the user's new request
-     * And AImee should not insist on finishing her previous sentence
+     * Scenario: Short, safe responses while driving
+     * Given the user is driving
+     * When AImee responds
+     * Then the response should be under 150 words
+     * And the sentences should be short and clear
+     * And the structure should be suited for audio listening
+     * And AImee should offer more detail only through a short invitation
      */
-    it('Scenario: Handling interruptions naturally', async () => {
+    it('Scenario: Short, safe responses while driving', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
-      // Given: Mid-story conversation (simulated via history)
-      const userId = `test-interrupt-${Date.now()}`;
-      let context = createDefaultContext(userId);
+      // Given: User is driving
+      const userId = `test-driving-safety-${Date.now()}`;
+      const context = createDefaultContext(userId, {
+        tourState: {
+          mode: 'drive'
+        }
+      });
 
-      // Simulate AImee telling a story
-      context = addToHistory(context, 'user', "Tell me about the Civil War history here");
-      context = addToHistory(context, 'assistant', "This area has a fascinating Civil War history. In 1863, there was a significant battle here that changed the course of—");
-
-      // When: User interrupts with new request
-      const input = "Actually, where's the nearest bathroom?";
+      // When: User asks a question
+      const input = 'Tell me about this area';
       const result = await routeToAgent(input, context);
 
-      // Then: Should shift to new request without insisting on finishing
-      const judgeResult = await judge.judgeInterruptionHandling(result.text);
+      // Then: Should be safe for driving
+      const judgeResult = await judge.judgeDrivingSafety(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
 
     /**
-     * Scenario: Handling ambiguous questions
-     * Given the user asks a vague or unclear question
+     * Scenario: Screen-related content safety
+     * Given the user is driving
+     * And the response includes something that would require looking at the screen
      * When AImee responds
-     * Then AImee should ask a short clarifying question
-     * And avoid overwhelming the user with options
+     * Then she must begin with "When it is safe to look at your screen…"
+     * And she must present a verbal summary before referencing visual content
      */
-    it('Scenario: Handling ambiguous questions', async () => {
+    it('Scenario: Screen-related content safety', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
-      // Given: Vague context
+      // Given: User is driving and needs visual content
+      const userId = `test-screen-safety-${Date.now()}`;
+      const context = createDefaultContext(userId, {
+        tourState: {
+          mode: 'drive'
+        }
+      });
+
+      // When: User asks for visual information
+      const input = 'Show me the route on the map';
+      const result = await routeToAgent(input, context);
+
+      // Then: Should include safety disclaimer
+      const judgeResult = await judge.judgeScreenContentSafety(result.text);
+
+      expect(judgeResult.pass).toBe(true);
+      expect(judgeResult.confidence).toBeGreaterThan(0.5);
+    }, 60000);
+
+  });
+
+  // ============================================================
+  // SECTION 4: AMBIGUOUS OR VAGUE QUESTIONS
+  // ============================================================
+  describe('Section 4: Ambiguous or Vague Questions', () => {
+
+    /**
+     * Scenario: Handling ambiguous questions with one clarifying question
+     * Given the user asks a vague or unclear question
+     * When AImee responds
+     * Then she must not guess
+     * And she must ask one short clarifying question
+     * And she must not provide multiple options or a long explanation
+     * And she must continue only after the user clarifies
+     */
+    it('Scenario: Handling ambiguous questions with one clarifying question', async () => {
+      if (SKIP_LLM_TESTS) {
+        console.log('Skipping LLM test - no API key');
+        return;
+      }
+
+      // Given: User asks vague question
       const userId = `test-ambiguous-${Date.now()}`;
       const context = createDefaultContext(userId);
 
-      // When: User asks vague question
-      const input = "What about that thing you mentioned?";
+      // When: User asks unclear question
+      const input = 'What about that thing?';
       const result = await routeToAgent(input, context);
 
-      // Then: Should ask clarifying question without overwhelming
-      const judgeResult = await judge.judgeClarificationRequest(result.text);
+      // Then: Should ask one clarifying question
+      const judgeResult = await judge.judgeAmbiguousClarification(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
 
+  });
+
+  // ============================================================
+  // SECTION 5: UNKNOWN OR MISSING INFORMATION
+  // ============================================================
+  describe('Section 5: Unknown or Missing Information', () => {
+
     /**
-     * Scenario: Handling unknown information
-     * Given the user asks a highly obscure question
-     * And the information is not available
-     * When AImee responds
-     * Then AImee should briefly acknowledge uncertainty
-     * And offer the closest relevant historical or travel insight
-     * And avoid making up precise facts
+     * Scenario: Graceful handling of missing data
+     * Given the user asks for specific information that AImee does not have
+     * When AImee determines she lacks exact details
+     * Then she must briefly acknowledge uncertainty
+     * And she must provide the closest relevant contextual information
+     * And she must never fabricate precise facts
      */
-    it('Scenario: Handling unknown information', async () => {
+    it('Scenario: Graceful handling of missing data', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
-      // Given: Obscure question
-      const userId = `test-unknown-${Date.now()}`;
+      // Given: User asks for unavailable information
+      const userId = `test-missing-data-${Date.now()}`;
       const context = createDefaultContext(userId);
 
-      // When: User asks obscure question
-      const input = "Who was the 47th person to cross the bridge here in 1847?";
+      // When: User asks for specific unavailable info
+      const input = 'What was the exact population of this town in 1847?';
       const result = await routeToAgent(input, context);
 
-      // Then: Should acknowledge uncertainty and offer related insight
+      // Then: Should acknowledge uncertainty gracefully
       const judgeResult = await judge.judgeUncertaintyHandling(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
+
+    /**
+     * Scenario: Fallback when GPS is unavailable
+     * Given GPS location data is not available
+     * When AImee responds
+     * Then she must briefly acknowledge the issue
+     * And she should operate only in question-and-answer mode
+     * And she must not attempt to describe nearby markers or locations
+     */
+    it('Scenario: Fallback when GPS is unavailable', async () => {
+      if (SKIP_LLM_TESTS) {
+        console.log('Skipping LLM test - no API key');
+        return;
+      }
+
+      // Given: GPS is unavailable
+      const userId = `test-gps-unavailable-${Date.now()}`;
+      const context = createDefaultContext(userId, {
+        location: undefined // No GPS data
+      });
+
+      // When: User asks location-based question
+      const input = 'What\'s around here?';
+      const result = await routeToAgent(input, context);
+
+      // Then: Should acknowledge GPS issue
+      const judgeResult = await judge.judgeGPSFallback(result.text);
+
+      expect(judgeResult.pass).toBe(true);
+      expect(judgeResult.confidence).toBeGreaterThan(0.5);
+    }, 60000);
+
   });
+
+  // ============================================================
+  // SECTION 6: TOOL FAILURE AND RECOVERY
+  // ============================================================
+  describe('Section 6: Tool Failure and Recovery', () => {
+
+    /**
+     * Scenario: Handling repeated tool failures
+     * Given a required tool fails multiple times in a row
+     * When AImee attempts to use the tool
+     * Then she must stop retrying
+     * And she must briefly explain the issue to the user
+     * And she should offer a simple alternative if one exists
+     */
+    it('Scenario: Handling repeated tool failures', async () => {
+      if (SKIP_LLM_TESTS) {
+        console.log('Skipping LLM test - no API key');
+        return;
+      }
+
+      // Given: Tool failure scenario (simulated)
+      const userId = `test-tool-failure-${Date.now()}`;
+      const context = createDefaultContext(userId);
+
+      // When: Simulate a tool failure response
+      const input = '[SYSTEM: Multiple tool failures occurred, explain to user]';
+      const result = await routeToAgent(input, context);
+
+      // Then: Should explain issue and offer alternatives
+      const judgeResult = await judge.judgeToolFailureHandling(result.text);
+
+      expect(judgeResult.pass).toBe(true);
+      expect(judgeResult.confidence).toBeGreaterThan(0.5);
+    }, 60000);
+
+  });
+
 });

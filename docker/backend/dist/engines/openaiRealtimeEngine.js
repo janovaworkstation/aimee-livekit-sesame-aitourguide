@@ -1,6 +1,10 @@
 "use strict";
 // OpenAI Engine for AImee POC Phase 2
 // Text-based testing implementation using OpenAI Chat Completions API
+//
+// NOTE: This implementation uses OpenAI Chat Completions API (text-based LLM).
+// We are NOT using the OpenAI Realtime STS API yet.
+// Architecture: HTTP Request → Text LLM → Text Response
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -9,6 +13,7 @@ exports.openaiRealtimeEngine = exports.OpenAIRealtimeEngine = void 0;
 exports.testOpenAIRealtime = testOpenAIRealtime;
 const openai_1 = __importDefault(require("openai"));
 const config_1 = require("../brains/config");
+const openaiModelConfig_1 = require("../config/openaiModelConfig");
 class OpenAIRealtimeEngine {
     constructor() {
         this.openai = null;
@@ -49,10 +54,11 @@ class OpenAIRealtimeEngine {
                 };
             }
             console.log('OpenAI: Processing text interaction request');
+            console.log(`OpenAI Models - LLM (ACTIVE): ${(0, openaiModelConfig_1.getDefaultLLMModel)()}, TTS (RESERVED): ${(0, openaiModelConfig_1.getTTSModel)()}, Realtime (RESERVED): ${(0, openaiModelConfig_1.getRealtimeModel)()}`);
             const systemMessage = request.instructions ||
                 'You are a helpful AI assistant for the AImee POC. Provide concise and helpful responses. This is a test of the OpenAI integration for Phase 2.';
             const completion = await this.openai.chat.completions.create({
-                model: 'gpt-4o-mini', // Using gpt-4o-mini for cost efficiency during testing
+                model: (0, openaiModelConfig_1.getDefaultLLMModel)(), // Centralized LLM model configuration
                 messages: [
                     {
                         role: 'system',

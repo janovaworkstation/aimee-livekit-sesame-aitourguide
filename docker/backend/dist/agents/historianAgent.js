@@ -6,6 +6,7 @@ exports.HistorianAgent = void 0;
 const baseAgent_1 = require("./baseAgent");
 const types_1 = require("./types");
 const agentBrainHelper_1 = require("../brains/agentBrainHelper");
+const promptLoader_1 = require("../prompts/promptLoader");
 /**
  * Historian Agent - Specializes in historical context, facts, and educational information
  * Handles: "tell me about", "history", "what happened here", "facts", "story"
@@ -23,30 +24,10 @@ class HistorianAgent extends baseAgent_1.BaseAgent {
             'happened', 'occurred', 'built', 'founded', 'established',
             'culture', 'heritage', 'tradition', 'origin', 'legacy'
         ];
-        this.systemPrompt = `You are the Historian agent for AImee, a GPS-triggered tour guide system. Your role is to:
-
-1. HISTORICAL CONTEXT: Provide accurate historical information about locations, buildings, and landmarks
-2. EDUCATIONAL CONTENT: Share interesting facts, stories, and educational details
-3. CULTURAL INSIGHTS: Explain cultural significance and heritage aspects
-4. STORYTELLING: Present information in an engaging, narrative format
-
-Key responsibilities:
-- Answer questions about history, background, and significance of places
-- Provide accurate historical facts and timelines
-- Share interesting stories and anecdotes about locations
-- Explain cultural and historical context
-- Handle educational and informational queries
-- Connect past events to present-day relevance
-
-Response style:
-- Be informative but engaging, not dry or academic
-- Use storytelling techniques to make history come alive
-- Include specific dates, names, and facts when relevant
-- Connect historical events to their broader context
-- Adapt depth of information to user's verbosity preference
-- Make history relatable and interesting
-
-Always ensure historical accuracy while maintaining an engaging narrative style. Reference the user's location context when providing site-specific information.`;
+    }
+    // System prompt loaded from external file
+    getSystemPrompt() {
+        return (0, promptLoader_1.getHistorianPrompt)();
     }
     /**
      * Determines if this agent should handle the input
@@ -79,7 +60,7 @@ Always ensure historical accuracy while maintaining an engaging narrative style.
         try {
             console.log('Historian Agent: Processing historical information request');
             // Generate history-focused response
-            const response = await (0, agentBrainHelper_1.runSmartAgentPrompt)(this.name, this.systemPrompt, input, context);
+            const response = await (0, agentBrainHelper_1.runSmartAgentPrompt)(this.name, this.getSystemPrompt(), input, context);
             return {
                 text: response,
                 metadata: {

@@ -132,14 +132,17 @@ npm test
 # Run LLM-as-Judge tests (uses OpenAI API from .env)
 npm run test:llm
 
-# Run AImee core feature tests (12 Gherkin scenarios)
+# Run AImee core feature tests (11 Gherkin scenarios)
 RUN_LLM_TESTS=true npx jest --testPathPattern=aimeeCoreFeature
 
-# Run AImee personality tests (6 Gherkin scenarios)
+# Run AImee personality tests (8 Gherkin scenarios)
 RUN_LLM_TESTS=true npx jest --testPathPattern=aimeePersonality
 
-# Run all behavioral tests (18 scenarios total)
-RUN_LLM_TESTS=true npx jest --testPathPattern="aimee(CoreFeature|Personality)"
+# Run AImee memory tests (14 Gherkin scenarios)
+RUN_LLM_TESTS=true npx jest --testPathPattern=aimeeMemory
+
+# Run all behavioral tests (33 scenarios total)
+RUN_LLM_TESTS=true npx jest --testPathPattern="aimee(CoreFeature|Personality|Memory)"
 
 # Run with coverage report
 npm run test:coverage
@@ -176,19 +179,29 @@ src/
 
 ### Test-Driven Development
 
-Behavioral tests are defined using Gherkin specs in `/specs/features/`. Two test files implement 18 total scenarios:
+Behavioral tests are defined using Gherkin specs in `/specs/features/`. Three test files implement 33 total scenarios:
 
-**`aimeeCoreFeature.test.ts`** - 12 scenarios from `aimee_core.feature`:
-- **Section 1**: First-time user experience (onboarding, name handling)
-- **Section 2**: Returning user experience (greetings, preferences)
-- **Section 3**: Driving safety rules (visual disclaimers, conciseness)
-- **Section 4**: Nearby markers & storytelling (marker intro, prioritization)
-- **Section 5**: Conversational rules (interruptions, ambiguity, uncertainty)
+**`aimeeCoreFeature.test.ts`** - 11 scenarios from `aimee_core.feature`:
+- **Section 1**: First-time and returning user behavior (onboarding, name handling, reconnection)
+- **Section 2**: Autonomy and action permissions (proactive markers, route changes, forbidden actions)
+- **Section 3**: Driving safety and response structure (conciseness, screen content safety)
+- **Section 4**: Ambiguous or vague questions (clarification handling)
+- **Section 5**: Unknown or missing information (uncertainty, GPS fallback)
+- **Section 6**: Tool failure and recovery (repeated failures, alternatives)
 
-**`aimeePersonality.test.ts`** - 6 scenarios from `aimee_personality.feature`:
-- **Section 1**: Voice, warmth & consistency (warm tone, natural pacing, name pronunciation)
-- **Section 2**: Response length and structure (conciseness, structured storytelling)
-- **Section 3**: Handling unknown information (graceful uncertainty)
+**`aimeePersonality.test.ts`** - 8 scenarios from `aimee_personality.feature`:
+- **Section 1**: Voice, warmth, and consistency (warm tone, natural pacing, name pronunciation)
+- **Section 2**: Response length, drive context, and invitations (conciseness, required invitations, structured storytelling)
+- **Section 3**: Personality boundaries and domain consistency (staying in travel domain)
+- **Section 4**: Handling unknown information (graceful uncertainty with invitations)
+
+**`aimeeMemory.test.ts`** - 14 scenarios from `aimee_memory.feature`:
+- **Section 1**: User identity and name memory (storing names, returning users, refusal respect)
+- **Section 2**: Trip memory vs long-term memory (session constraints, trip clearing, preference preservation)
+- **Section 3**: Visited markers and history (logging visits, avoiding repeats, honest history)
+- **Section 4**: Preference learning and personalization (learned preferences, explicit overrides)
+- **Section 5**: Privacy and no-memory mode (privacy activation, behavior, disabling)
+- **Section 6**: Memory uncertainty and honesty (missing memory grace, personalization confidence)
 
 For new features, provide Given-When-Then statements:
 
@@ -216,9 +229,14 @@ Judge methods evaluate responses for warmth, accuracy, safety disclaimers, conci
 
 ### User Memory
 
-- Location: `/app/rag-json/memory.json` (Docker volume)
-- Contains: name, interests, preferences, visited markers
-- API: `GET/POST /api/memory/:userId`
+- **Location**: `/app/rag-json/memory.json` (Docker volume)
+- **Enhanced Storage**: Names, route preferences with confidence, timestamped visit history, privacy settings
+- **API**: `GET/POST /api/memory/:userId`
+- **New Features**:
+  - Trip memory vs long-term memory separation
+  - Privacy mode with no-memory sessions
+  - Route preference learning with confidence tracking
+  - Enhanced visit history with timestamps and notes
 
 ### Conversation Transcripts
 

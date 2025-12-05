@@ -1,18 +1,16 @@
-# AImee Architecture Blueprint 2.1 (Docker + Runpod Edition)
+# AImee Architecture Blueprint
 
 ## Overview
+
 AImee is a voice-first, GPS-triggered, multi-agent tour guide supporting three intelligence tiers:
-- Premium: OpenAI Realtime API
-- Standard: Sesame AI (self-hosted via Docker on Runpod)
-- Offline: On-device LLM (Apple Foundation Models, Gemini Nano, Phi models)
 
-All backend components run in Docker containers.  
-Runpod provides GPU hosting for Sesame AI during the POC.  
-React Native + Expo powers the mobile app for iOS/Android POC testing.
+- **Premium**: OpenAI GPT-4o-mini with STT/TTS
+- **Standard**: Sesame AI (self-hosted via Docker on Runpod)
+- **Offline**: On-device LLM (Apple Foundation Models, Gemini Nano, Phi models)
 
-LiveKit handles realtime audio transport and data tracks.
+All backend components run in Docker containers. Runpod provides GPU hosting for Sesame AI during the POC. React Native + Expo powers the mobile app for iOS/Android POC testing.
 
----
+LiveKit handles real-time audio transport and data tracks.
 
 ## Deployment Layer
 
@@ -33,8 +31,6 @@ docker/
 - Shared volume: `config/docker/rag-db/` → `/app/rag-json/`
 
 Sesame runs on Runpod GPU using docker-compose or direct Docker commands.
-
----
 
 ## High-Level System Diagram
 
@@ -65,47 +61,39 @@ Sesame runs on Runpod GPU using docker-compose or direct Docker commands.
          ▼
 
 🧠 Intelligence Engines
-    ├── Premium: OpenAI Realtime API
+    ├── Premium: OpenAI GPT-4o-mini API
     ├── Standard: Sesame AI (Runpod Docker)
     └── Offline: On-device LLM
 ```
-
----
 
 ## Audio Streaming Pipeline
 
 1. React Native mic → WebRTC → LiveKit
 2. LiveKit routes stream to AImee backend container
 3. Backend forwards audio to selected brain:
-   - OpenAI Realtime API
+   - OpenAI GPT-4o-mini with STT/TTS
    - Sesame AI (Runpod)
    - Local device STT/LLM (offline)
 4. TTS returns over LiveKit → app speaker
 
----
-
 ## GPS → Voice Trigger Pipeline
 
-1. useGPS monitors live location  
-2. Marker DB loaded locally from SQLite  
-3. Geofence triggered → data event sent to backend (LiveKit data track)  
-4. Multi-Agent Router generates site-specific narrative  
-5. Voice response streamed back via LiveKit  
-
----
+1. useGPS monitors live location
+2. Marker DB loaded locally from SQLite
+3. Geofence triggered → data event sent to backend (LiveKit data track)
+4. Multi-Agent Router generates site-specific narrative
+5. Voice response streamed back via LiveKit
 
 ## Brain Selection Logic
 
 ```
 If premium user AND network strong:
-    Use OpenAI Realtime API
+    Use OpenAI GPT-4o-mini API
 Else if network OK:
     Use Sesame (Runpod)
 Else:
     Use On-device LLM
 ```
-
----
 
 ## Multi-Agent Architecture
 
@@ -116,22 +104,19 @@ Else:
 - RAG search, long-form descriptions, accuracy handling
 
 ### Experience Agent
-- Tone, pacing, interaction style, mood
+- Activity recommendations, user preferences, trip optimization
 
 ### Memory Agent
-- User preferences, recent history, personalization
-
----
+- User personalization, trip vs long-term memory separation, privacy mode
+- Route preference learning, visit history tracking, name storage
 
 ## Offline Architecture
 
-- SQLite DB for markers  
-- Offline tiles via Mapbox  
-- On-device LLM for fallback  
-- On-device TTS (Apple/Android)  
+- SQLite DB for markers
+- Offline tiles via Mapbox
+- On-device LLM for fallback
+- On-device TTS (Apple/Android)
 - Offline geofencing remains fully local
-
----
 
 ## Data Persistence
 
@@ -146,8 +131,6 @@ Else:
 - Supports multiple sessions per user
 - API endpoints for session management
 
----
-
 ## Testing Architecture
 
 ### Layered Testing Approach
@@ -160,14 +143,13 @@ Else:
 - Write failing tests first
 - Implement to pass tests
 
----
-
 ## Summary
+
 This architecture is:
-- scalable
-- portable
-- cloud-ready
-- offline-capable
-- future-proof
-- test-driven with quality evaluation
-- optimized for Claude Code automation  
+- Scalable
+- Portable
+- Cloud-ready
+- Offline-capable
+- Future-proof
+- Test-driven with comprehensive LLM-as-Judge evaluation (33 behavioral scenarios)
+- Optimized for Claude Code automation

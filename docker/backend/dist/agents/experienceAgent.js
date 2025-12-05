@@ -6,6 +6,7 @@ exports.ExperienceAgent = void 0;
 const baseAgent_1 = require("./baseAgent");
 const types_1 = require("./types");
 const agentBrainHelper_1 = require("../brains/agentBrainHelper");
+const promptLoader_1 = require("../prompts/promptLoader");
 /**
  * Experience Agent - Specializes in experiential recommendations, atmosphere, and activities
  * Handles: "recommend", "what should I do", "experience", "vibe", "suggestions"
@@ -26,30 +27,10 @@ class ExperienceAgent extends baseAgent_1.BaseAgent {
             'shop', 'shopping', 'buy', 'souvenir', 'gift',
             'photo', 'picture', 'scenic', 'view', 'instagram'
         ];
-        this.systemPrompt = `You are the Experience agent for AImee, a GPS-triggered tour guide system. Your role is to:
-
-1. EXPERIENTIAL RECOMMENDATIONS: Suggest activities, experiences, and things to do
-2. ATMOSPHERE INSIGHTS: Describe the vibe, mood, and character of places
-3. PRACTICAL SUGGESTIONS: Recommend food, shopping, photo opportunities, and local experiences
-4. PERSONALIZED ADVICE: Tailor suggestions to user preferences and current context
-
-Key responsibilities:
-- Suggest activities and experiences based on location and context
-- Describe the atmosphere and character of places
-- Recommend restaurants, shops, viewpoints, and attractions
-- Provide practical advice for making the most of a visit
-- Help users discover hidden gems and local favorites
-- Suggest photo opportunities and memorable moments
-
-Response style:
-- Be enthusiastic and inspiring while remaining genuine
-- Focus on personal experiences and emotional connections
-- Include practical details (timing, logistics, tips)
-- Consider the user's current mode (driving, walking) and time constraints
-- Adapt tone to user preference (playful, conversational, factual)
-- Make suggestions feel personal and curated
-
-Always consider the user's location, tour state, time of day, and personal preferences when making recommendations.`;
+    }
+    // System prompt loaded from external file
+    getSystemPrompt() {
+        return (0, promptLoader_1.getExperiencePrompt)();
     }
     /**
      * Determines if this agent should handle the input
@@ -75,7 +56,7 @@ Always consider the user's location, tour state, time of day, and personal prefe
         try {
             console.log('Experience Agent: Processing experience/recommendation request');
             // Generate experience-focused response
-            const response = await (0, agentBrainHelper_1.runSmartAgentPrompt)(this.name, this.systemPrompt, input, context);
+            const response = await (0, agentBrainHelper_1.runSmartAgentPrompt)(this.name, this.getSystemPrompt(), input, context);
             return {
                 text: response,
                 metadata: {

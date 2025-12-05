@@ -1,7 +1,7 @@
 /**
  * AImee Personality Feature Tests
  *
- * Test-driven development based on /specs/features/aimee_personality.feature
+ * Test-driven development based on updated /specs/features/aimee_personality.feature
  * Uses LLM-as-Judge pattern to evaluate semantic correctness of responses.
  *
  * Run with: RUN_LLM_TESTS=true npx jest --testPathPattern=aimeePersonality
@@ -58,16 +58,16 @@ describe('AImee Personality Feature Tests', () => {
   });
 
   // ============================================================
-  // SECTION 1: VOICE, WARMTH & CONSISTENCY
+  // SECTION 1: VOICE, WARMTH, AND CONSISTENCY
   // ============================================================
-  describe('Section 1: Voice, Warmth & Consistency', () => {
+  describe('Section 1: Voice, Warmth, and Consistency', () => {
 
     /**
      * Scenario: Warm conversational response
-     * Given the user asks a general travel-question such as "Where are we right now?"
+     * Given the user asks a general travel-related question such as "Where are we right now?"
      * When AImee responds
      * Then the response should sound warm, friendly, and conversational
-     * And the response should avoid robotic or overly formal language
+     * And the response should avoid robotic, formal, or academic language
      * And the tone should be suitable for in-car listening
      */
     it('Scenario: Warm conversational response', async () => {
@@ -97,8 +97,9 @@ describe('AImee Personality Feature Tests', () => {
      * Scenario: Natural human pacing and clarity
      * Given the user is driving
      * When AImee responds
-     * Then the response should have short, clear sentences
+     * Then the response should use short, clear sentences
      * And the pacing should sound like natural spoken conversation
+     * And the response should avoid long or complex sentence structures
      */
     it('Scenario: Natural human pacing and clarity', async () => {
       if (SKIP_LLM_TESTS) {
@@ -113,14 +114,12 @@ describe('AImee Personality Feature Tests', () => {
         location: { lat: 40.7128, lng: -74.0060 }
       });
 
-      // When: User asks about the area
+      // When: AImee responds
       const input = 'Tell me about this area';
       const result = await routeToAgent(input, context);
 
       // Then: Response should have natural pacing
-      console.log(`[PACING TEST] Response: "${result.text.substring(0, 400)}..."`);
       const judgeResult = await judge.judgeNaturalPacing(result.text);
-      console.log(`[PACING TEST] Judge: pass=${judgeResult.pass}, reasoning="${judgeResult.reasoning}"`);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -158,63 +157,98 @@ describe('AImee Personality Feature Tests', () => {
   });
 
   // ============================================================
-  // SECTION 2: RESPONSE LENGTH AND STRUCTURE
+  // SECTION 2: RESPONSE LENGTH, DRIVE CONTEXT, AND INVITATIONS
   // ============================================================
-  describe('Section 2: Response Length and Structure', () => {
+  describe('Section 2: Response Length, Drive Context, and Invitations', () => {
 
     /**
-     * Scenario: Default conciseness unless asked for more
-     * Given the user asks a question that does not require deep detail
+     * Scenario: Conciseness in driving context
+     * Given the user is driving
      * When AImee responds
-     * Then the response should be concise and structured for audio
-     * And AImee should offer more detail only if the user requests it
+     * Then the response should be concise and under a safe word-count limit
+     * And the sentences should be short and easy to follow
+     * And AImee should end with a brief, natural invitation for more
+     * And the invitation must not be overwhelming or lengthy
      */
-    it('Scenario: Default conciseness unless asked for more', async () => {
+    it('Scenario: Conciseness in driving context', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
-      // Given: User asks a simple question
-      const userId = `test-concise-${Date.now()}`;
+      // Given: User is driving
+      const userId = `test-driving-concise-${Date.now()}`;
       const context = createDefaultContext(userId, {
+        tourState: { mode: 'drive' },
         location: { lat: 40.7128, lng: -74.0060 }
       });
 
-      // When: User asks what's nearby
-      const input = "What's nearby?";
+      // When: AImee responds
+      const input = 'Tell me about this area';
       const result = await routeToAgent(input, context);
 
-      // Then: Response should be concise
-      const wordCount = result.text.split(/\s+/).filter((w: string) => w.length > 0).length;
-      console.log(`[CONCISE TEST] Response (${wordCount} words): "${result.text.substring(0, 400)}..."`);
-      const judgeResult = await judge.judgeDefaultConciseness(result.text);
-      console.log(`[CONCISE TEST] Judge: pass=${judgeResult.pass}, reasoning="${judgeResult.reasoning}"`);
+      // Then: Response should be concise for driving
+      const judgeResult = await judge.judgeDrivingConciseness(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
 
     /**
-     * Scenario: Structured storytelling
-     * Given AImee is explaining a historical marker or location
+     * Scenario: Required invitation after each answer
+     * Given the user asks any question
      * When AImee responds
-     * Then the response should include:
-     *   - a location anchor
-     *   - why it matters
-     *   - one interesting fact
-     * And AImee should end with a natural invitation such as:
-     *   - "Want more detail?"
-     *   - "Would you like another story?"
+     * Then she must end with a natural invitation such as:
+     * | invitation                          |
+     * | "Want to know more?"                |
+     * | "Would you like another nearby story?" |
+     * And the invitation should match the tone and context of the conversation
      */
-    it('Scenario: Structured storytelling', async () => {
+    it('Scenario: Required invitation after each answer', async () => {
       if (SKIP_LLM_TESTS) {
         console.log('Skipping LLM test - no API key');
         return;
       }
 
-      // Given: User near a historical marker
-      const userId = `test-storytelling-${Date.now()}`;
+      // Given: User asks any question
+      const userId = `test-invitation-${Date.now()}`;
+      const context = createDefaultContext(userId, {
+        location: { lat: 40.7128, lng: -74.0060 }
+      });
+
+      // When: AImee responds
+      const input = 'What can you tell me about this place?';
+      const result = await routeToAgent(input, context);
+
+      // Then: Should end with a natural invitation
+      const judgeResult = await judge.judgeRequiredInvitation(result.text);
+
+      expect(judgeResult.pass).toBe(true);
+      expect(judgeResult.confidence).toBeGreaterThan(0.5);
+    }, 60000);
+
+    /**
+     * Scenario: Structured storytelling rules
+     * Given AImee is explaining a historical marker or location
+     * When AImee responds
+     * Then the response should include:
+     * | element             |
+     * | a location anchor   |
+     * | why it matters      |
+     * | one interesting fact|
+     * And AImee should end with an appropriate invitation
+     * And if this is the first introduction of a nearby marker
+     * Then AImee must end with the exact required question:
+     * "Would you like the short version or the deeper story?"
+     */
+    it('Scenario: Structured storytelling rules', async () => {
+      if (SKIP_LLM_TESTS) {
+        console.log('Skipping LLM test - no API key');
+        return;
+      }
+
+      // Given: AImee is explaining a historical marker
+      const userId = `test-structured-storytelling-${Date.now()}`;
       const context = createDefaultContext(userId, {
         location: {
           lat: 40.7128,
@@ -227,14 +261,12 @@ describe('AImee Personality Feature Tests', () => {
         }
       });
 
-      // When: User asks about the marker
-      const input = 'Tell me about this marker';
+      // When: AImee responds about a marker (first introduction)
+      const input = '[SYSTEM: User approaching historical marker for first time]';
       const result = await routeToAgent(input, context);
 
-      // Then: Response should follow storytelling structure
-      console.log(`[STORYTELLING TEST] Response: "${result.text.substring(0, 400)}..."`);
-      const judgeResult = await judge.judgeStructuredStorytelling(result.text);
-      console.log(`[STORYTELLING TEST] Judge: pass=${judgeResult.pass}, reasoning="${judgeResult.reasoning}"`);
+      // Then: Response should follow structured storytelling
+      const judgeResult = await judge.judgeEnhancedStructuredStorytelling(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -242,17 +274,56 @@ describe('AImee Personality Feature Tests', () => {
   });
 
   // ============================================================
-  // SECTION 3: HANDLING UNKNOWN INFORMATION
+  // SECTION 3: PERSONALITY BOUNDARIES AND DOMAIN CONSISTENCY
   // ============================================================
-  describe('Section 3: Handling Unknown Information', () => {
+  describe('Section 3: Personality Boundaries and Domain Consistency', () => {
+
+    /**
+     * Scenario: Staying within domain unless user requests otherwise
+     * Given the user is driving
+     * And the user asks a question unrelated to travel, geography, or history
+     * When AImee responds
+     * Then she should give a short, safe acknowledgment
+     * And she should gently redirect toward travel or exploration
+     * And she must avoid acting as a general-purpose assistant
+     */
+    it('Scenario: Staying within domain unless user requests otherwise', async () => {
+      if (SKIP_LLM_TESTS) {
+        console.log('Skipping LLM test - no API key');
+        return;
+      }
+
+      // Given: User is driving and asks unrelated question
+      const userId = `test-domain-boundaries-${Date.now()}`;
+      const context = createDefaultContext(userId, {
+        tourState: { mode: 'drive' }
+      });
+
+      // When: User asks about cooking
+      const input = 'Can you help me with a recipe for pasta?';
+      const result = await routeToAgent(input, context);
+
+      // Then: Should redirect to travel domain
+      const judgeResult = await judge.judgeDomainBoundaries(result.text);
+
+      expect(judgeResult.pass).toBe(true);
+      expect(judgeResult.confidence).toBeGreaterThan(0.5);
+    }, 60000);
+  });
+
+  // ============================================================
+  // SECTION 4: HANDLING UNKNOWN INFORMATION
+  // ============================================================
+  describe('Section 4: Handling Unknown Information', () => {
 
     /**
      * Scenario: Graceful uncertainty
      * Given the user asks for obscure or unavailable information
      * When AImee determines she does not have exact details
-     * Then AImee should briefly acknowledge uncertainty
-     * And AImee should provide the closest relevant context
-     * And AImee should never fabricate precise facts
+     * Then she should briefly acknowledge uncertainty
+     * And she should provide the closest relevant contextual information
+     * And she must never fabricate precise facts
+     * And she should end with a natural invitation such as "Want more detail?"
      */
     it('Scenario: Graceful uncertainty', async () => {
       if (SKIP_LLM_TESTS) {
@@ -260,18 +331,18 @@ describe('AImee Personality Feature Tests', () => {
         return;
       }
 
-      // Given: User asks an obscure question
+      // Given: User asks for obscure/unavailable information
       const userId = `test-uncertainty-${Date.now()}`;
       const context = createDefaultContext(userId, {
         location: { lat: 40.7128, lng: -74.0060 }
       });
 
-      // When: User asks for unavailable information
-      const input = 'Who built this bridge in 1847 and what was the exact cost?';
+      // When: AImee determines she lacks exact details
+      const input = 'What was the exact population of this town in 1847?';
       const result = await routeToAgent(input, context);
 
-      // Then: Response should handle uncertainty gracefully
-      const judgeResult = await judge.judgeGracefulUncertainty(result.text);
+      // Then: Should handle uncertainty gracefully with invitation
+      const judgeResult = await judge.judgeGracefulUncertaintyWithInvitation(result.text);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);

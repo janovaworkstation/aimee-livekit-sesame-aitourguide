@@ -6,6 +6,8 @@ exports.MemoryAgent = void 0;
 const baseAgent_1 = require("./baseAgent");
 const types_1 = require("./types");
 const agentBrainHelper_1 = require("../brains/agentBrainHelper");
+const promptLoader_1 = require("../prompts/promptLoader");
+const jsonMemoryStore_1 = require("../memory/jsonMemoryStore");
 /**
  * Memory Agent - Specializes in personalization, preferences, and user context management
  * Handles: preference updates, personal information, conversation context, memory management
@@ -24,29 +26,47 @@ class MemoryAgent extends baseAgent_1.BaseAgent {
             'remind me', 'note that', 'keep in mind', 'remember that',
             'next time', 'from now on', 'in the future'
         ];
-        this.systemPrompt = `You are the Memory agent for AImee, a GPS-triggered tour guide system. Your role is to:
-
-1. PERSONALIZATION MANAGEMENT: Track and apply user preferences for personalized experiences
-2. CONVERSATION MEMORY: Maintain context and continuity across interactions
-3. PREFERENCE LEARNING: Learn from user feedback and behavior to improve future interactions
-4. USER PROFILE BUILDING: Build a comprehensive understanding of user interests and needs
-
-Key responsibilities:
-- Process requests to update user preferences (verbosity, tone, interests)
-- Remember personal information shared by users (name, interests, accessibility needs)
-- Apply learned preferences to improve future interactions
-- Handle requests for the system to remember or forget specific information
-- Maintain conversation continuity and context awareness
-- Learn from implicit feedback and user behavior patterns
-
-Response style:
-- Be attentive and remembering, showing you value user input
-- Acknowledge preference updates clearly and confirm understanding
-- Reference past interactions appropriately to show continuity
-- Be helpful in explaining how preferences will affect future interactions
-- Respect privacy and give users control over their information
-
-Focus on building a helpful, personalized experience while respecting user privacy and autonomy.`;
+    }
+    // System prompt loaded from external file
+    getSystemPrompt() {
+        return (0, promptLoader_1.getMemoryPrompt)();
+    }
+    /**
+     * Check if the input is likely a name response based on conversation context
+     */
+    isLikelyNameResponse(input, context) {
+        // Only consider short responses (1-2 words) that are alphabetic
+        const words = input.trim().split(/\s+/);
+        if (words.length > 2 || words.length < 1) {
+            return false;
+        }
+        const firstWord = words[0];
+        if (firstWord.length < 2 || !/^[A-Za-z]+$/.test(firstWord)) {
+            return false;
+        }
+        // Check if the last assistant message in conversation history asked for a name
+        if (!context.history || context.history.length === 0) {
+            return false;
+        }
+        // Find the most recent assistant message
+        const lastAssistantMessage = context.history
+            .slice()
+            .reverse()
+            .find(msg => msg.role === 'assistant');
+        if (!lastAssistantMessage) {
+            return false;
+        }
+        // Check if the assistant message contained a name-related question
+        const nameQuestions = [
+            'what should i call you',
+            'how should i address you',
+            'what do you want me to call you',
+            'what would you like me to call you',
+            'what is your name',
+            'may i have your name'
+        ];
+        const messageText = lastAssistantMessage.content.toLowerCase();
+        return nameQuestions.some(question => messageText.includes(question));
     }
     /**
      * Determines if this agent should handle the input
@@ -70,6 +90,10 @@ Focus on building a helpful, personalized experience while respecting user priva
         if (personalPatterns.some(pattern => pattern.test(normalizedInput))) {
             return true;
         }
+        // Context-aware name response detection
+        if (this.isLikelyNameResponse(input, context)) {
+            return true;
+        }
         // Check for memory-related keywords
         return this.checkKeywords(input, this.memoryKeywords);
     }
@@ -79,23 +103,77 @@ Focus on building a helpful, personalized experience while respecting user priva
     async run(input, context) {
         try {
             console.log('Memory Agent: Processing personalization/memory request');
-            // Check if this is a preference update request
-            const preferenceUpdate = this.extractPreferenceUpdate(input);
-            // Generate memory-focused response
-            const response = await (0, agentBrainHelper_1.runSmartAgentPrompt)(this.name, this.systemPrompt, input, context);
+            // Special handling for session start greeting check
+            // Match various session start patterns
+            if (input.includes('[SYSTEM: This is the initial session') ||
+                input.includes('[SYSTEM: This is a new session')) {
+                return await this.handleSessionStart(context);
+            }
+            // Get current user memory for context
+            const userId = context.userId || 'voice-user';
+            const currentMemory = await (0, jsonMemoryStore_1.getUserMemory)(userId);
+            // Add memory context to the prompt
+            const memoryContext = currentMemory ?
+                `Current stored memory for this user: ${JSON.stringify(currentMemory)}` :
+                'No stored memory for this user yet.';
+            // Generate memory-focused response with memory context
+            const response = await (0, agentBrainHelper_1.runSmartAgentPrompt)(this.name, this.getSystemPrompt() + '\n\n' + memoryContext + '\n\nUser input: ' + input, `Please analyze this input for any memory updates (names, preferences, interests, visited markers). If you detect memory updates:
+1. Output a single line starting with: SAVE_MEMORY: {valid_json_object}
+2. This line must contain ONLY that text - the literal prefix "SAVE_MEMORY:" followed by valid JSON with double quotes
+3. JSON may include fields: "name", "storyLengthPreference", "interests", "visitedMarkers"
+4. After that line, provide your natural response to the user
+5. If no memory changes, do NOT output any SAVE_MEMORY line`, context);
+            // Parse SAVE_MEMORY directive using line-based approach
+            let memorySaved = false;
+            let memoryUpdate = null;
+            const lines = response.split('\n');
+            // Find the SAVE_MEMORY line
+            const memoryLineIndex = lines.findIndex(line => line.trim().startsWith('SAVE_MEMORY:'));
+            if (memoryLineIndex !== -1) {
+                const memoryLine = lines[memoryLineIndex];
+                const jsonPart = memoryLine.substring(memoryLine.indexOf(':') + 1).trim();
+                console.log(`Memory Agent: SAVE_MEMORY line detected: ${memoryLine.trim()}`);
+                console.log(`Memory Agent: JSON part: ${jsonPart}`);
+                try {
+                    memoryUpdate = JSON.parse(jsonPart);
+                    await (0, jsonMemoryStore_1.upsertUserMemory)(userId, memoryUpdate);
+                    memorySaved = true;
+                    // Log successful memory update with specific fields
+                    const updatedFields = Object.keys(memoryUpdate);
+                    console.log(`Memory Agent: Updated memory for user ${userId}. Fields: ${updatedFields.join(', ')}`);
+                }
+                catch (error) {
+                    console.error(`Memory Agent: Error parsing SAVE_MEMORY JSON. Line: "${memoryLine.trim()}", JSON: "${jsonPart}", Error:`, error);
+                    // Fallback: try to extract name manually from the memory line
+                    const nameMatch = memoryLine.match(/["']?name["']?\s*:\s*["']([^"']+)["']/i);
+                    if (nameMatch) {
+                        try {
+                            memoryUpdate = { name: nameMatch[1] };
+                            await (0, jsonMemoryStore_1.upsertUserMemory)(userId, memoryUpdate);
+                            console.log(`Memory Agent: Fallback name extraction saved: ${nameMatch[1]}`);
+                            memorySaved = true;
+                        }
+                        catch (fallbackError) {
+                            console.error('Memory Agent: Fallback name extraction also failed:', fallbackError);
+                        }
+                    }
+                }
+            }
+            // Clean response by removing SAVE_MEMORY lines
+            const cleanLines = lines.filter(line => !line.trim().startsWith('SAVE_MEMORY:'));
+            const cleanResponse = cleanLines.join('\n').trim();
             const metadata = {
                 agent: this.name,
-                hasPreferenceUpdate: !!preferenceUpdate,
                 conversationLength: context.history.length,
-                confidence: this.calculateConfidence(input, context)
+                confidence: this.calculateConfidence(input, context),
+                memorySaved
             };
-            if (preferenceUpdate) {
-                metadata.preferenceUpdate = preferenceUpdate;
-                // TODO: In future phases, actually persist preference updates to user profile
-                console.log('Memory Agent: Detected preference update:', preferenceUpdate);
+            // Add memory update details to metadata
+            if (memorySaved && memoryUpdate) {
+                metadata.memoryUpdatedFields = Object.keys(memoryUpdate);
             }
             return {
-                text: response,
+                text: cleanResponse,
                 metadata
             };
         }
@@ -115,7 +193,7 @@ Focus on building a helpful, personalized experience while respecting user priva
     /**
      * Detailed intent matching for the router
      */
-    getIntentMatch(input, context) {
+    getIntentMatch(input, _context) {
         const normalizedInput = input.toLowerCase();
         let confidence = 0;
         const matchedKeywords = [];
@@ -168,32 +246,63 @@ Focus on building a helpful, personalized experience while respecting user priva
         };
     }
     /**
-     * Extract preference updates from user input
+     * Handle session start - check memory and provide appropriate greeting
      */
-    extractPreferenceUpdate(input) {
-        const normalizedInput = input.toLowerCase();
-        // Name updates
-        if (normalizedInput.includes('my name is') || normalizedInput.includes('call me')) {
-            const nameMatch = normalizedInput.match(/(?:my name is|call me)\s+(\w+)/);
-            if (nameMatch) {
-                return { type: 'name', value: nameMatch[1] };
+    async handleSessionStart(context) {
+        try {
+            const userId = context.userId || 'voice-user';
+            console.log(`Memory Agent: Checking stored memory for user ${userId}`);
+            const userMemory = await (0, jsonMemoryStore_1.getUserMemory)(userId);
+            // Create dynamic greeting using LLM
+            const memoryInfo = userMemory ?
+                `User memory found: ${JSON.stringify(userMemory)}` :
+                'No stored memory for this user.';
+            const greetingPrompt = userMemory?.name ?
+                `Generate a BRIEF, warm greeting for ${userMemory.name} who is returning to use AImee. Keep it to 1-2 sentences MAX. Just say welcome back and ask how you can help. Do NOT re-introduce yourself or explain what you do - they already know. Example: "Welcome back, ${userMemory.name}! Great to see you again. How can I help you explore today?"` :
+                `Generate a warm, welcoming first-time greeting for a new user. Introduce yourself as Amy, their AI tour guide assistant. Explain briefly what you do (help discover interesting places and stories) and ask what you should call them. Keep it concise for in-car listening. Make it sound natural and friendly, not scripted.`;
+            const response = await (0, agentBrainHelper_1.runSmartAgentPrompt)(this.name, this.getSystemPrompt() + '\n\n' + memoryInfo, greetingPrompt, context);
+            if (userMemory?.name) {
+                console.log(`Memory Agent: Generated personalized greeting for returning user: ${userMemory.name}`);
+                return {
+                    text: response,
+                    metadata: {
+                        agent: this.name,
+                        sessionStart: true,
+                        hasStoredMemory: true,
+                        userName: userMemory.name,
+                        confidence: 1.0,
+                        greetingType: 'returning_user'
+                    }
+                };
+            }
+            else {
+                console.log(`Memory Agent: Generated first-time greeting for new user`);
+                return {
+                    text: response,
+                    metadata: {
+                        agent: this.name,
+                        sessionStart: true,
+                        hasStoredMemory: false,
+                        confidence: 1.0,
+                        greetingType: 'new_user'
+                    }
+                };
             }
         }
-        // Verbosity preferences
-        if (normalizedInput.includes('short') || normalizedInput.includes('brief') || normalizedInput.includes('concise')) {
-            return { type: 'verbosity', value: 'short' };
+        catch (error) {
+            console.error('Memory Agent: Error during session start:', error);
+            return {
+                text: "Hello! I'm Amy, your AI tour guide assistant. I'm having a little trouble accessing my memory right now, but I'm ready to help you discover interesting places. What should I call you?",
+                metadata: {
+                    agent: this.name,
+                    sessionStart: true,
+                    hasStoredMemory: false,
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                    confidence: 0.5,
+                    greetingType: 'error_fallback'
+                }
+            };
         }
-        if (normalizedInput.includes('long') || normalizedInput.includes('detailed') || normalizedInput.includes('thorough')) {
-            return { type: 'verbosity', value: 'long' };
-        }
-        // Tone preferences
-        if (normalizedInput.includes('playful') || normalizedInput.includes('fun') || normalizedInput.includes('casual')) {
-            return { type: 'tone', value: 'playful' };
-        }
-        if (normalizedInput.includes('factual') || normalizedInput.includes('formal') || normalizedInput.includes('professional')) {
-            return { type: 'tone', value: 'factual' };
-        }
-        return null;
     }
     /**
      * Calculate confidence score for this agent's ability to handle the request
