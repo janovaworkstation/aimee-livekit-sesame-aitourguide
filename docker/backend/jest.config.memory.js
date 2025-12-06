@@ -4,13 +4,13 @@ const { baseConfig, getReportFilename } = require('./jest.config.base');
 
 module.exports = {
   ...baseConfig,
-  displayName: 'LLM-as-Judge Tests',
-  testMatch: ['**/testing/__tests__/criticalPaths.test.ts'],
+  displayName: 'AImee Memory Feature Tests',
+  testMatch: ['**/testing/__tests__/aimeeMemory.test.ts'],
   reporters: [
     'default',
     ['jest-html-reporter', {
-      pageTitle: 'AImee LLM-as-Judge Tests Report',
-      outputPath: getReportFilename('llm-as-judge-tests'),
+      pageTitle: 'AImee Memory Feature Tests Report',
+      outputPath: getReportFilename('aimee-memory-tests'),
       includeFailureMsg: true,
       includeSuiteFailure: true,
       includeConsoleLog: true,

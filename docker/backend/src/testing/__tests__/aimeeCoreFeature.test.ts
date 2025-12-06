@@ -8,6 +8,7 @@
  */
 
 import { LLMJudge } from '../llmJudge';
+import { assertJudgeResultWithDebug } from '../debugHelper';
 import { routeToAgent } from '../../agents/agentRouter';
 import { createDefaultContext, addToHistory, ConversationContext } from '../../agents/types';
 import { upsertUserMemory, getUserMemory } from '../../memory/jsonMemoryStore';
@@ -90,6 +91,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Evaluate the response
       const judgeResult = await judge.judgeOnboarding(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'First-time user onboarding', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -121,6 +123,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should greet by name and be brief
       const judgeResult = await judge.judgeReconnection(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Returning user greeting', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -168,6 +171,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should proactively introduce with required question
       const judgeResult = await judge.judgeProactiveMarkerIntroduction(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Proactive marker introduction on proximity', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -201,6 +205,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should ask for confirmation
       const judgeResult = await judge.judgeRouteChangeRequest(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Asking before route changes', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -230,6 +235,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should decline with explanation
       const judgeResult = await judge.judgeForbiddenActions(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Forbidden irreversible actions', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -271,6 +277,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should be safe for driving
       const judgeResult = await judge.judgeDrivingSafety(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Short, safe responses while driving', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -304,6 +311,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should include safety disclaimer
       const judgeResult = await judge.judgeScreenContentSafety(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Screen-related content safety', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -341,6 +349,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should ask one clarifying question
       const judgeResult = await judge.judgeAmbiguousClarification(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Handling ambiguous questions', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -377,6 +386,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should acknowledge uncertainty gracefully
       const judgeResult = await judge.judgeUncertaintyHandling(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Graceful handling of missing data', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -408,6 +418,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should acknowledge GPS issue
       const judgeResult = await judge.judgeGPSFallback(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Fallback when GPS is unavailable', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -444,6 +455,7 @@ describe('AImee Core Feature Tests', () => {
       // Then: Should explain issue and offer alternatives
       const judgeResult = await judge.judgeToolFailureHandling(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Handling repeated tool failures', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);

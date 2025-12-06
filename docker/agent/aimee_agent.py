@@ -147,6 +147,19 @@ class AImeeAgent(Agent):
             except Exception as e:
                 logger.error(f"Error starting transcript session: {e}")
 
+            # If reconnection, clear trip memory
+            if self.is_reconnection:
+                try:
+                    logger.info("Sending trip memory clear signal due to reconnection")
+                    await backend_client.chat(
+                        user_id="voice-user",
+                        user_input="[SYSTEM: User reconnected - clear trip memory]",
+                        context={"mode": "voice", "source": "livekit", "systemMessage": True, "clearTrip": True},
+                        session_id=self.transcript_session_id
+                    )
+                except Exception as e:
+                    logger.error(f"Error clearing trip memory: {e}")
+
         # Wait a moment for mobile app audio tracks to be fully established
         # This prevents the greeting from being sent before mobile can receive it
         await asyncio.sleep(2.0)
@@ -157,7 +170,8 @@ class AImeeAgent(Agent):
             try:
                 if self.is_reconnection:
                     # User reconnected - acknowledge the reconnection and use their name if known
-                    system_message = "[SYSTEM: The user has just reconnected after briefly leaving. Welcome them back warmly. If you know their name, use it. Keep it brief - just acknowledge you're glad they're back and ask how you can help.]"
+                    # Trip memory has been cleared above
+                    system_message = "[SYSTEM: The user has just reconnected after briefly leaving. Welcome them back warmly. If you know their name, use it. Keep it brief - just acknowledge you're glad they're back and ask how you can help. Note: Trip memory has been cleared.]"
                 else:
                     # New session - check for stored name
                     system_message = "[SYSTEM: This is a new session. Check if the user has a stored name and greet accordingly. If no name is stored, ask for their name. If a name is stored, greet them by name.]"
@@ -254,6 +268,19 @@ class AImeeAgent(Agent):
     async def on_exit(self):
         """Called when agent is replaced or session ends"""
         logger.info("AImee agent exiting session")
+
+        # Send session end signal to Memory Agent to preserve trip in history
+        if self.transcript_session_id and self.use_backend_router:
+            try:
+                logger.info("Sending session end signal to Memory Agent")
+                await backend_client.chat(
+                    user_id="voice-user",
+                    user_input="[SYSTEM: Session ending]",
+                    context={"mode": "voice", "source": "livekit", "systemMessage": True},
+                    session_id=self.transcript_session_id
+                )
+            except Exception as e:
+                logger.error(f"Error sending session end signal: {e}")
 
         # End transcript session if one was started
         if self.transcript_session_id:

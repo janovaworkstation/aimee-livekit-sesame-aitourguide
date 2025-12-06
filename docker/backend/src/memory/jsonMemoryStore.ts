@@ -15,6 +15,44 @@ export type RoutePreference = {
   lastUpdated: Date;
 };
 
+// Trip-specific constraints
+export type TripConstraints = {
+  timeLimit?: string;  // e.g., "2 hours", "90 minutes"
+  mustReturn?: boolean;
+  avoidHighways?: boolean;
+  maxDistance?: number; // in miles
+};
+
+// Session-specific trip memory
+export type TripMemory = {
+  tripId: string;
+  startedAt: Date;
+  region?: string;
+  activeRoute?: string;
+  constraints: TripConstraints;
+  temporaryPreferences: string[]; // Preferences that don't persist beyond trip
+  plannedStops: string[];
+  completedStops: string[];
+};
+
+// Completed trip history
+export type TripHistoryEntry = {
+  tripId: string;
+  date: string; // YYYY-MM-DD format
+  region?: string;
+  stopsVisited: string[];
+  totalDuration?: number; // in minutes
+};
+
+// Enhanced privacy settings
+export type PrivacySettings = {
+  mode: boolean;
+  activatedAt?: Date;
+  consentToStore: boolean;
+  dataRetentionDays: number;
+  excludeFromAnalytics: boolean;
+};
+
 export type UserMemory = {
   // User identity
   name?: string;
@@ -30,9 +68,14 @@ export type UserMemory = {
   visitedMarkers?: string[]; // Keep for backward compatibility
   visitHistory?: VisitedMarker[];
 
-  // Privacy settings
-  privacyMode?: boolean;
+  // Trip-specific memory
+  currentTrip?: TripMemory;
+  tripHistory?: TripHistoryEntry[];
+
+  // Privacy settings - enhanced from simple boolean
+  privacyMode?: boolean; // Keep for backward compatibility
   privacyActivatedAt?: Date;
+  privacySettings?: PrivacySettings;
 
   // Memory metadata
   lastInteraction?: Date;
@@ -99,9 +142,14 @@ export async function upsertUserMemory(
     visitedMarkers: patch.visitedMarkers ?? current.visitedMarkers ?? [],
     visitHistory: patch.visitHistory ?? current.visitHistory ?? [],
 
-    // Privacy settings
+    // Trip-specific memory
+    currentTrip: patch.currentTrip ?? current.currentTrip,
+    tripHistory: patch.tripHistory ?? current.tripHistory ?? [],
+
+    // Privacy settings - enhanced from simple boolean
     privacyMode: patch.privacyMode ?? current.privacyMode ?? false,
     privacyActivatedAt: patch.privacyActivatedAt ?? current.privacyActivatedAt,
+    privacySettings: patch.privacySettings ?? current.privacySettings,
 
     // Memory metadata
     lastInteraction: patch.lastInteraction ?? new Date(),
@@ -246,4 +294,309 @@ export async function getUserRoutePreferences(userId: string): Promise<RoutePref
 
     return new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
   });
+}
+
+// ========== TRIP MEMORY MANAGEMENT ==========
+
+/**
+ * Start a new trip session
+ */
+export async function startNewTrip(
+  userId: string,
+  region?: string,
+  route?: string,
+  constraints?: Partial<TripConstraints>
+): Promise<TripMemory> {
+  const db = loadDB();
+  const current = db.users[userId] || {};
+
+  // If there's an existing trip, move it to history first
+  if (current.currentTrip) {
+    await endCurrentTrip(userId);
+    // Reload DB after endCurrentTrip modifies it
+    const updatedDb = loadDB();
+    const updatedCurrent = updatedDb.users[userId] || {};
+    Object.assign(current, updatedCurrent);
+  }
+
+  const newTrip: TripMemory = {
+    tripId: `trip-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    startedAt: new Date(),
+    region,
+    activeRoute: route,
+    constraints: constraints || {},
+    temporaryPreferences: [],
+    plannedStops: [],
+    completedStops: []
+  };
+
+  const updated: UserMemory = {
+    ...current,
+    currentTrip: newTrip,
+    lastInteraction: new Date()
+  };
+
+  db.users[userId] = updated;
+  saveDB(db);
+  return newTrip;
+}
+
+/**
+ * Update the current trip with new information
+ */
+export async function updateCurrentTrip(
+  userId: string,
+  updates: Partial<TripMemory>
+): Promise<TripMemory | null> {
+  const db = loadDB();
+  const current = db.users[userId] || {};
+
+  if (!current.currentTrip) {
+    return null;
+  }
+
+  const updatedTrip: TripMemory = {
+    ...current.currentTrip,
+    ...updates,
+    // Ensure we don't overwrite constraints, merge them
+    constraints: {
+      ...current.currentTrip.constraints,
+      ...(updates.constraints || {})
+    }
+  };
+
+  const updated: UserMemory = {
+    ...current,
+    currentTrip: updatedTrip,
+    lastInteraction: new Date()
+  };
+
+  db.users[userId] = updated;
+  saveDB(db);
+  return updatedTrip;
+}
+
+/**
+ * End the current trip and move it to trip history
+ */
+export async function endCurrentTrip(userId: string): Promise<void> {
+  const db = loadDB();
+  const current = db.users[userId] || {};
+
+  if (!current.currentTrip) {
+    return;
+  }
+
+  // Calculate trip duration
+  const startTime = new Date(current.currentTrip.startedAt).getTime();
+  const endTime = Date.now();
+  const durationMinutes = Math.round((endTime - startTime) / (1000 * 60));
+
+  // Create history entry
+  const historyEntry: TripHistoryEntry = {
+    tripId: current.currentTrip.tripId,
+    date: new Date(current.currentTrip.startedAt).toISOString().split('T')[0],
+    region: current.currentTrip.region,
+    stopsVisited: current.currentTrip.completedStops,
+    totalDuration: durationMinutes
+  };
+
+  // Add to history
+  const tripHistory = current.tripHistory || [];
+  tripHistory.push(historyEntry);
+
+  // Clear current trip
+  const updated: UserMemory = {
+    ...current,
+    currentTrip: undefined,
+    tripHistory,
+    lastInteraction: new Date()
+  };
+
+  db.users[userId] = updated;
+  saveDB(db);
+}
+
+/**
+ * Clear trip memory without saving to history (for privacy mode or reset)
+ */
+export async function clearTripMemory(userId: string): Promise<void> {
+  const db = loadDB();
+  const current = db.users[userId] || {};
+
+  const updated: UserMemory = {
+    ...current,
+    currentTrip: undefined,
+    lastInteraction: new Date()
+  };
+
+  db.users[userId] = updated;
+  saveDB(db);
+}
+
+/**
+ * Get the current active trip
+ */
+export async function getCurrentTrip(userId: string): Promise<TripMemory | null> {
+  const memory = await getUserMemory(userId);
+  return memory?.currentTrip || null;
+}
+
+/**
+ * Add a constraint to the current trip
+ */
+export async function addTripConstraint(
+  userId: string,
+  constraint: Partial<TripConstraints>
+): Promise<TripMemory | null> {
+  const db = loadDB();
+  const current = db.users[userId] || {};
+
+  if (!current.currentTrip) {
+    return null;
+  }
+
+  const updatedTrip: TripMemory = {
+    ...current.currentTrip,
+    constraints: {
+      ...current.currentTrip.constraints,
+      ...constraint
+    }
+  };
+
+  const updated: UserMemory = {
+    ...current,
+    currentTrip: updatedTrip,
+    lastInteraction: new Date()
+  };
+
+  db.users[userId] = updated;
+  saveDB(db);
+  return updatedTrip;
+}
+
+/**
+ * Add a temporary preference to the current trip (doesn't persist)
+ */
+export async function addTemporaryPreference(
+  userId: string,
+  preference: string
+): Promise<TripMemory | null> {
+  const db = loadDB();
+  const current = db.users[userId] || {};
+
+  if (!current.currentTrip) {
+    return null;
+  }
+
+  const temporaryPreferences = current.currentTrip.temporaryPreferences || [];
+  if (!temporaryPreferences.includes(preference)) {
+    temporaryPreferences.push(preference);
+  }
+
+  const updatedTrip: TripMemory = {
+    ...current.currentTrip,
+    temporaryPreferences
+  };
+
+  const updated: UserMemory = {
+    ...current,
+    currentTrip: updatedTrip,
+    lastInteraction: new Date()
+  };
+
+  db.users[userId] = updated;
+  saveDB(db);
+  return updatedTrip;
+}
+
+/**
+ * Mark a stop as completed in the current trip
+ */
+export async function completeStop(
+  userId: string,
+  stopId: string
+): Promise<TripMemory | null> {
+  const db = loadDB();
+  const current = db.users[userId] || {};
+
+  if (!current.currentTrip) {
+    return null;
+  }
+
+  const completedStops = current.currentTrip.completedStops || [];
+  if (!completedStops.includes(stopId)) {
+    completedStops.push(stopId);
+  }
+
+  const updatedTrip: TripMemory = {
+    ...current.currentTrip,
+    completedStops
+  };
+
+  const updated: UserMemory = {
+    ...current,
+    currentTrip: updatedTrip,
+    lastInteraction: new Date()
+  };
+
+  db.users[userId] = updated;
+  saveDB(db);
+  return updatedTrip;
+}
+
+// ========== PRIVACY MANAGEMENT ==========
+
+/**
+ * Set comprehensive privacy settings
+ */
+export async function setPrivacySettings(
+  userId: string,
+  settings: Partial<PrivacySettings>
+): Promise<PrivacySettings> {
+  const current = await getUserMemory(userId) || {};
+
+  const currentSettings = current.privacySettings || {
+    mode: false,
+    consentToStore: true,
+    dataRetentionDays: 90,
+    excludeFromAnalytics: false
+  };
+
+  const newSettings: PrivacySettings = {
+    ...currentSettings,
+    ...settings
+  };
+
+  // Update legacy privacy fields for backward compatibility
+  await upsertUserMemory(userId, {
+    privacyMode: newSettings.mode,
+    privacyActivatedAt: newSettings.mode ? new Date() : undefined,
+    privacySettings: newSettings
+  });
+
+  return newSettings;
+}
+
+/**
+ * Check if memory storage is allowed for user
+ */
+export async function shouldStoreMemory(userId: string): Promise<boolean> {
+  const memory = await getUserMemory(userId);
+
+  // Check new privacy settings first, fall back to legacy mode
+  if (memory?.privacySettings) {
+    return !memory.privacySettings.mode && memory.privacySettings.consentToStore;
+  }
+
+  // Fall back to legacy privacy mode
+  return !(memory?.privacyMode ?? false);
+}
+
+/**
+ * Check if user data is excluded from analytics
+ */
+export async function isExcludedFromAnalytics(userId: string): Promise<boolean> {
+  const memory = await getUserMemory(userId);
+  return memory?.privacySettings?.excludeFromAnalytics ?? false;
 }

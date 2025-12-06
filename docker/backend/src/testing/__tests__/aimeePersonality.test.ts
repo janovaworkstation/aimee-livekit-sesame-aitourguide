@@ -8,6 +8,7 @@
  */
 
 import { LLMJudge } from '../llmJudge';
+import { assertJudgeResultWithDebug } from '../debugHelper';
 import { routeToAgent } from '../../agents/agentRouter';
 import { createDefaultContext, addToHistory } from '../../agents/types';
 import * as fs from 'fs';
@@ -121,6 +122,7 @@ describe('AImee Personality Feature Tests', () => {
       // Then: Response should have natural pacing
       const judgeResult = await judge.judgeNaturalPacing(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Natural human pacing and clarity', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -223,6 +225,7 @@ describe('AImee Personality Feature Tests', () => {
       // Then: Should end with a natural invitation
       const judgeResult = await judge.judgeRequiredInvitation(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Required invitation after each answer', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -268,6 +271,7 @@ describe('AImee Personality Feature Tests', () => {
       // Then: Response should follow structured storytelling
       const judgeResult = await judge.judgeEnhancedStructuredStorytelling(result.text);
 
+      assertJudgeResultWithDebug(judgeResult, 'Structured storytelling rules', input, context);
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);

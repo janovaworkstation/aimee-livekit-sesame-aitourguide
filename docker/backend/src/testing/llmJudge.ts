@@ -11,6 +11,8 @@ export interface JudgeResult {
   pass: boolean;
   reasoning: string;
   confidence: number;
+  actualResponse?: string; // Add the actual LLM response for debugging
+  judgePrompt?: string; // Add the judge prompt for transparency
 }
 
 export interface JudgeCriteria {
@@ -81,14 +83,18 @@ A response should PASS only if it meets all CRITICAL criteria and most IMPORTANT
       return {
         pass: result.pass === true,
         reasoning: result.reasoning || 'No reasoning provided',
-        confidence: typeof result.confidence === 'number' ? result.confidence : 0.5
+        confidence: typeof result.confidence === 'number' ? result.confidence : 0.5,
+        actualResponse: response, // Include the actual response for debugging
+        judgePrompt: judgePrompt // Include the judge prompt for transparency
       };
     } catch (error) {
       console.error('LLM Judge error:', error);
       return {
         pass: false,
         reasoning: `Judge evaluation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        confidence: 0
+        confidence: 0,
+        actualResponse: response, // Include the actual response even on error
+        judgePrompt: judgePrompt // Include the judge prompt even on error
       };
     }
   }

@@ -13,6 +13,7 @@ module.exports = {
       outputPath: getReportFilename('aimee-core-feature-tests'),
       includeFailureMsg: true,
       includeSuiteFailure: true,
+      includeConsoleLog: true,
       dateFormat: 'yyyy-mm-dd HH:MM:ss'
     }]
   ]

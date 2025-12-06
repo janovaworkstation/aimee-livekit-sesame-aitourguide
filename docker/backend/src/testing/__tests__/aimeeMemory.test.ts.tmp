@@ -8,7 +8,6 @@
  */
 
 import { LLMJudge } from '../llmJudge';
-import { assertJudgeResultWithDebug as globalAssertJudgeResultWithDebug } from '../debugHelper';
 import { routeToAgent } from '../../agents/agentRouter';
 import { createDefaultContext, addToHistory, ConversationContext } from '../../agents/types';
 import { upsertUserMemory, getUserMemory, addVisitedMarker } from '../../memory/jsonMemoryStore';
@@ -59,14 +58,34 @@ describe('AImee Memory Feature Tests', () => {
     }
   });
 
-  // Use global debug helper for consistency across all test files
+  // Helper function to add debug info to HTML test reports
   function assertJudgeResultWithDebug(
     judgeResult: any,
     testName: string,
     input: string,
     context?: any
   ) {
-    globalAssertJudgeResultWithDebug(judgeResult, testName, input, context, true);
+    if (!judgeResult.pass) {
+      let debugMessage = `Test failed: ${judgeResult.reasoning}\n\nDEBUG INFO:\nUser Input: "${input}"\nLLM Response: "${judgeResult.actualResponse}"\nJudge Confidence: ${judgeResult.confidence}`;
+
+      if (context?.history) {
+        debugMessage += `\nContext History: ${JSON.stringify(context.history)}`;
+      }
+
+      // Console output for developer debugging
+      console.log(`\n=== TEST FAILURE DEBUG (${testName}) ===`);
+      console.log('User Input:', input);
+      console.log('Actual LLM Response:', judgeResult.actualResponse);
+      console.log('Judge Reasoning:', judgeResult.reasoning);
+      console.log('Judge Confidence:', judgeResult.confidence);
+      if (context?.history) {
+        console.log('Context History:', JSON.stringify(context.history, null, 2));
+      }
+      console.log('================================================================\n');
+
+      // Fail with message that will appear in HTML report
+      throw new Error(debugMessage);
+    }
   }
 
   // ============================================================
@@ -101,7 +120,7 @@ describe('AImee Memory Feature Tests', () => {
       const judgeResult = await judge.judgeNameStorage(result.text, 'Jeff');
 
       // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, 'Storing user name on first session', input, context);
+      assertJudgeResultWithDebug(judgeResult, 'Storing user name on first session', input);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -171,9 +190,6 @@ describe('AImee Memory Feature Tests', () => {
 
       // Then: Should respect refusal gracefully
       const judgeResult = await judge.judgeNameRefusalRespect(result.text);
-
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Respecting user refusal to share a name", input, context);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -252,9 +268,6 @@ describe('AImee Memory Feature Tests', () => {
       // Then: Should treat as fresh trip, not continuation
       const judgeResult = await judge.judgeTripMemoryClearing(result.text);
 
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Clearing trip memory between trips", input, context);
-
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -290,9 +303,6 @@ describe('AImee Memory Feature Tests', () => {
 
       // Then: Should bias toward scenic locations based on preferences
       const judgeResult = await judge.judgeLongTermPreferences(result.text);
-
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Preserving long-term preferences across trips", input, context);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -332,9 +342,6 @@ describe('AImee Memory Feature Tests', () => {
       // Then: Should acknowledge visit logging
       const judgeResult = await judge.judgeMarkerLogging(result.text);
 
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Logging a visited marker after departure", input, context);
-
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -369,9 +376,6 @@ describe('AImee Memory Feature Tests', () => {
       // Then: Should avoid suggesting already-visited location
       const judgeResult = await judge.judgeRepeatSuggestionAvoidance(result.text);
 
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Avoiding repeat suggestions for recent visits", input, context);
-
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -401,9 +405,6 @@ describe('AImee Memory Feature Tests', () => {
 
       // Then: Should not invent visit history
       const judgeResult = await judge.judgeVisitHistoryHonesty(result.text);
-
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Never inventing visit history", input, context);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -446,9 +447,6 @@ describe('AImee Memory Feature Tests', () => {
       // Then: Should suggest based on learned preferences
       const judgeResult = await judge.judgePreferenceLearning(result.text);
 
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Learning preferences from repeated choices", input, context);
-
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -483,9 +481,6 @@ describe('AImee Memory Feature Tests', () => {
 
       // Then: Should prioritize explicit request over preferences
       const judgeResult = await judge.judgeExplicitOverride(result.text);
-
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Personalization must not override explicit commands", input, context);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -522,9 +517,6 @@ describe('AImee Memory Feature Tests', () => {
       // Then: Should confirm privacy mode activation
       const judgeResult = await judge.judgePrivacyModeActivation(result.text);
 
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Enabling privacy or no-memory mode", input, context);
-
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -557,9 +549,6 @@ describe('AImee Memory Feature Tests', () => {
       // Then: Should respect privacy mode limitations
       const judgeResult = await judge.judgePrivacyModeBehavior(result.text);
 
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Behavior while privacy mode is active", input, context);
-
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -587,9 +576,6 @@ describe('AImee Memory Feature Tests', () => {
 
       // Then: Should confirm memory re-enablement
       const judgeResult = await judge.judgePrivacyModeDisabling(result.text);
-
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Disabling privacy or no-memory mode", input, context);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
@@ -628,9 +614,6 @@ describe('AImee Memory Feature Tests', () => {
       // Then: Should acknowledge missing memory gracefully
       const judgeResult = await judge.judgeMissingMemoryGrace(result.text);
 
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Acknowledging missing memory gracefully", input, context);
-
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);
     }, 60000);
@@ -663,9 +646,6 @@ describe('AImee Memory Feature Tests', () => {
 
       // Then: Should be appropriately cautious about claims
       const judgeResult = await judge.judgePersonalizationConfidence(result.text);
-
-      // Assert with debug info for HTML report
-      assertJudgeResultWithDebug(judgeResult, "Avoiding overconfident personalization", input, context);
 
       expect(judgeResult.pass).toBe(true);
       expect(judgeResult.confidence).toBeGreaterThan(0.5);

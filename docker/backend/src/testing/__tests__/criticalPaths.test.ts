@@ -8,6 +8,7 @@
  */
 
 import { LLMJudge } from '../llmJudge';
+import { assertJudgeResultWithDebug } from '../debugHelper';
 
 // Skip these tests if no API key is available
 const SKIP_LLM_TESTS = !process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === 'test-api-key';
@@ -32,6 +33,7 @@ describe('Critical Path Tests (LLM-as-Judge)', () => {
 
       const result = await judge.judgeGreeting(response, false);
 
+      assertJudgeResultWithDebug(result, 'Good first-time greeting', response, undefined, true);
       expect(result.pass).toBe(true);
       expect(result.confidence).toBeGreaterThan(0.5);
     }, 30000);
@@ -46,6 +48,7 @@ describe('Critical Path Tests (LLM-as-Judge)', () => {
 
       const result = await judge.judgeGreeting(response, true, 'Jeff');
 
+      assertJudgeResultWithDebug(result, 'Good returning user greeting', response, undefined, true);
       expect(result.pass).toBe(true);
       expect(result.confidence).toBeGreaterThan(0.5);
     }, 30000);
@@ -60,6 +63,7 @@ describe('Critical Path Tests (LLM-as-Judge)', () => {
 
       const result = await judge.judgeGreeting(response, false);
 
+      assertJudgeResultWithDebug(result, 'Greeting without name request (should fail)', response);
       expect(result.pass).toBe(false);
     }, 30000);
   });
@@ -76,6 +80,7 @@ describe('Critical Path Tests (LLM-as-Judge)', () => {
 
       const result = await judge.judgeNameCapture(userInput, response);
 
+      assertJudgeResultWithDebug(result, 'Proper name acknowledgment', userInput, undefined, true);
       expect(result.pass).toBe(true);
     }, 30000);
 
@@ -90,6 +95,7 @@ describe('Critical Path Tests (LLM-as-Judge)', () => {
 
       const result = await judge.judgeNameCapture(userInput, response);
 
+      assertJudgeResultWithDebug(result, 'Name not acknowledged (should fail)', userInput);
       expect(result.pass).toBe(false);
     }, 30000);
   });
@@ -105,6 +111,7 @@ describe('Critical Path Tests (LLM-as-Judge)', () => {
 
       const result = await judge.judgeReconnection(response);
 
+      assertJudgeResultWithDebug(result, 'Brief reconnection greeting', response, undefined, true);
       expect(result.pass).toBe(true);
     }, 30000);
 
@@ -118,6 +125,7 @@ describe('Critical Path Tests (LLM-as-Judge)', () => {
 
       const result = await judge.judgeReconnection(response);
 
+      assertJudgeResultWithDebug(result, 'Overly long reconnection (should fail)', response);
       expect(result.pass).toBe(false);
     }, 30000);
   });

@@ -55,6 +55,9 @@ run_test_suite "jest.config.core.js" "AImee Core Feature Tests" "RUN_LLM_TESTS=t
 # Run AImee Personality Tests
 run_test_suite "jest.config.personality.js" "AImee Personality Tests" "RUN_LLM_TESTS=true"
 
+# Run AImee Memory Tests
+run_test_suite "jest.config.memory.js" "AImee Memory Tests" "RUN_LLM_TESTS=true"
+
 echo "=========================================="
 echo "Test Suite Complete"
 echo "=========================================="

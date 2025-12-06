@@ -5,7 +5,16 @@ import { BaseAgent } from './baseAgent';
 import { ConversationContext, AgentResult, IntentMatch, AgentPriority } from './types';
 import { runSmartAgentPrompt } from '../brains/agentBrainHelper';
 import { getMemoryPrompt } from '../prompts/promptLoader';
-import { getUserMemory, upsertUserMemory } from '../memory/jsonMemoryStore';
+import {
+  getUserMemory,
+  upsertUserMemory,
+  getCurrentTrip,
+  startNewTrip,
+  clearTripMemory,
+  addTripConstraint,
+  shouldStoreMemory,
+  setPrivacySettings
+} from '../memory/jsonMemoryStore';
 
 /**
  * Memory Agent - Specializes in personalization, preferences, and user context management
@@ -111,6 +120,39 @@ export class MemoryAgent extends BaseAgent {
   }
 
   /**
+   * Parse time constraints from user input
+   */
+  private parseTimeConstraint(input: string): string | undefined {
+    const timePatterns = [
+      /(?:only |about |around |roughly |approximately )?(\d+(?:\.\d+)?\s*(?:hour|hr)s?)\b/i,
+      /(?:only |about |around |roughly |approximately )?(\d+(?:\.\d+)?\s*(?:minute|min)s?)\b/i,
+      /(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)\s*(?:hour|hr)s?/i
+    ];
+
+    for (const pattern of timePatterns) {
+      const match = input.match(pattern);
+      if (match) {
+        return match[0];
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Detect if this is a new trip context (region change, etc)
+   */
+  private async detectTripBoundary(input: string, context: ConversationContext): Promise<boolean> {
+    const tripIndicators = [
+      /^(?:i'm|i am|we're|we are)\s+(?:in|at|near|around|visiting)/i,
+      /^(?:just arrived|arrived|got to|reached)/i,
+      /^(?:starting|beginning)\s+(?:a|our|the)?\s*(?:new)?\s*(?:trip|tour|journey)/i,
+      /^(?:heading to|going to|driving to)\s+(?:a\s+)?(?:new|different)\s+(?:area|region|place)/i
+    ];
+
+    return tripIndicators.some(pattern => pattern.test(input.trim()));
+  }
+
+  /**
    * Process memory and personalization requests
    */
   async run(input: string, context: ConversationContext): Promise<AgentResult> {
@@ -124,14 +166,74 @@ export class MemoryAgent extends BaseAgent {
         return await this.handleSessionStart(context);
       }
 
-      // Get current user memory for context
+      // Check for session end to save trip to history
+      if (input.includes('[SYSTEM: Session ending]') ||
+          input.includes('[SYSTEM: User disconnecting]')) {
+        return await this.handleSessionEnd(context);
+      }
+
+      // Detect new trip boundary
+      const isNewTrip = await this.detectTripBoundary(input, context);
+      if (isNewTrip) {
+        const userId = context.userId || 'voice-user';
+        // Parse region from input if possible
+        const regionMatch = input.match(/(?:in|at|near|around|visiting)\s+([^,.!?]+)/i);
+        const region = regionMatch ? regionMatch[1].trim() : undefined;
+        await startNewTrip(userId, region);
+        console.log(`Memory Agent: Started new trip${region ? ` in ${region}` : ''}`);
+      }
+
+      // Check for time constraints in current trip
+      const timeConstraint = this.parseTimeConstraint(input);
+      if (timeConstraint) {
+        const userId = context.userId || 'voice-user';
+        const currentTrip = await getCurrentTrip(userId);
+        if (currentTrip) {
+          await addTripConstraint(userId, { timeLimit: timeConstraint });
+          console.log(`Memory Agent: Added time constraint to trip: ${timeConstraint}`);
+        }
+      }
+
+      // Check for privacy mode requests
+      if (input.toLowerCase().includes('do not remember') ||
+          input.toLowerCase().includes('privacy mode') ||
+          input.toLowerCase().includes('don\'t store') ||
+          input.toLowerCase().includes('no memory')) {
+        const userId = context.userId || 'voice-user';
+        await setPrivacySettings(userId, { mode: true, activatedAt: new Date() });
+        console.log('Memory Agent: Privacy mode activated');
+      }
+
+      // Check for privacy mode deactivation
+      if ((input.toLowerCase().includes('you can remember') ||
+           input.toLowerCase().includes('it\'s fine to remember') ||
+           input.toLowerCase().includes('disable privacy')) &&
+          !input.toLowerCase().includes('do not')) {
+        const userId = context.userId || 'voice-user';
+        await setPrivacySettings(userId, { mode: false });
+        console.log('Memory Agent: Privacy mode deactivated');
+      }
+
+      // Get current user memory and trip for context
       const userId = context.userId || 'voice-user';
       const currentMemory = await getUserMemory(userId);
+      const currentTrip = await getCurrentTrip(userId);
 
-      // Add memory context to the prompt
-      const memoryContext = currentMemory ?
+      // Check if we should store memory (privacy mode check)
+      const canStore = await shouldStoreMemory(userId);
+
+      // Add memory and trip context to the prompt
+      let memoryContext = currentMemory ?
         `Current stored memory for this user: ${JSON.stringify(currentMemory)}` :
         'No stored memory for this user yet.';
+
+      if (currentTrip) {
+        memoryContext += `\n\nCurrent active trip: ${JSON.stringify(currentTrip)}`;
+      }
+
+      if (!canStore) {
+        memoryContext += '\n\nNOTE: Privacy mode is active - do not store any new memory.';
+      }
 
       // Generate memory-focused response with memory context
       const response = await runSmartAgentPrompt(
@@ -163,8 +265,14 @@ export class MemoryAgent extends BaseAgent {
 
         try {
           memoryUpdate = JSON.parse(jsonPart);
-          await upsertUserMemory(userId, memoryUpdate);
-          memorySaved = true;
+
+          // Only save if privacy mode allows
+          if (canStore) {
+            await upsertUserMemory(userId, memoryUpdate);
+            memorySaved = true;
+          } else {
+            console.log('Memory Agent: Skipping memory save due to privacy mode');
+          }
 
           // Log successful memory update with specific fields
           const updatedFields = Object.keys(memoryUpdate);
@@ -352,6 +460,43 @@ export class MemoryAgent extends BaseAgent {
           error: error instanceof Error ? error.message : 'Unknown error',
           confidence: 0.5,
           greetingType: 'error_fallback'
+        }
+      };
+    }
+  }
+
+  /**
+   * Handle session end - save trip to history
+   */
+  private async handleSessionEnd(context: ConversationContext): Promise<AgentResult> {
+    try {
+      const userId = context.userId || 'voice-user';
+      const currentTrip = await getCurrentTrip(userId);
+
+      if (currentTrip) {
+        // Trip will be automatically moved to history by endCurrentTrip
+        // which is called by startNewTrip when a new trip begins
+        console.log(`Memory Agent: Session ending, trip ${currentTrip.tripId} preserved`);
+      }
+
+      return {
+        text: '',  // No user-facing message for session end
+        metadata: {
+          agent: this.name,
+          sessionEnd: true,
+          hadActiveTrip: !!currentTrip,
+          confidence: 1.0
+        }
+      };
+    } catch (error) {
+      console.error('Memory Agent: Error during session end:', error);
+      return {
+        text: '',
+        metadata: {
+          agent: this.name,
+          sessionEnd: true,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          confidence: 0.5
         }
       };
     }

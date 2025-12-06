@@ -1,7 +1,23 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { getUserMemory, upsertUserMemory, addVisitedMarker, UserMemory } from '../jsonMemoryStore';
+import {
+  getUserMemory,
+  upsertUserMemory,
+  addVisitedMarker,
+  UserMemory,
+  startNewTrip,
+  updateCurrentTrip,
+  endCurrentTrip,
+  clearTripMemory,
+  getCurrentTrip,
+  addTripConstraint,
+  addTemporaryPreference,
+  completeStop,
+  setPrivacySettings,
+  shouldStoreMemory,
+  isExcludedFromAnalytics
+} from '../jsonMemoryStore';
 
 describe('jsonMemoryStore', () => {
   let testDir: string;
@@ -168,6 +184,248 @@ describe('jsonMemoryStore', () => {
       const result = await getUserMemory('any-user');
       // Should return null without throwing
       expect(result).toBeNull();
+    });
+  });
+
+  describe('Trip Memory Management', () => {
+    it('should create new trip with constraints', async () => {
+      const userId = 'test-trip-user';
+      const trip = await startNewTrip(userId, 'Central Ohio', 'US-62', {
+        timeLimit: '2 hours',
+        mustReturn: true
+      });
+
+      expect(trip).toBeDefined();
+      expect(trip.tripId).toMatch(/^trip-/);
+      expect(trip.region).toBe('Central Ohio');
+      expect(trip.activeRoute).toBe('US-62');
+      expect(trip.constraints.timeLimit).toBe('2 hours');
+      expect(trip.constraints.mustReturn).toBe(true);
+      expect(trip.temporaryPreferences).toEqual([]);
+      expect(trip.plannedStops).toEqual([]);
+      expect(trip.completedStops).toEqual([]);
+    });
+
+    it('should update current trip memory', async () => {
+      const userId = 'test-trip-update';
+      await startNewTrip(userId, 'Columbus');
+
+      const updated = await updateCurrentTrip(userId, {
+        activeRoute: 'I-270',
+        constraints: { avoidHighways: false }
+      });
+
+      expect(updated).toBeDefined();
+      expect(updated?.activeRoute).toBe('I-270');
+      expect(updated?.constraints.avoidHighways).toBe(false);
+      expect(updated?.region).toBe('Columbus');
+    });
+
+    it('should clear trip memory on end', async () => {
+      const userId = 'test-trip-end';
+      const trip = await startNewTrip(userId, 'Dublin');
+      await completeStop(userId, 'marker-1');
+      await completeStop(userId, 'marker-2');
+
+      await endCurrentTrip(userId);
+
+      const current = await getCurrentTrip(userId);
+      expect(current).toBeNull();
+
+      const memory = await getUserMemory(userId);
+      expect(memory?.tripHistory).toBeDefined();
+      expect(memory?.tripHistory?.length).toBe(1);
+      expect(memory?.tripHistory?.[0].stopsVisited).toEqual(['marker-1', 'marker-2']);
+    });
+
+    it('should preserve long-term memory when clearing trip', async () => {
+      const userId = 'test-trip-preserve';
+      await upsertUserMemory(userId, {
+        name: 'TestUser',
+        interests: ['history', 'architecture']
+      });
+
+      await startNewTrip(userId, 'New Albany');
+      await addTemporaryPreference(userId, 'avoid-crowds');
+
+      await clearTripMemory(userId);
+
+      const memory = await getUserMemory(userId);
+      expect(memory?.name).toBe('TestUser');
+      expect(memory?.interests).toEqual(['history', 'architecture']);
+      expect(memory?.currentTrip).toBeUndefined();
+    });
+
+    it('should track trip history', async () => {
+      const userId = 'test-trip-history';
+
+      // First trip
+      await startNewTrip(userId, 'Region1');
+      await completeStop(userId, 'stop1');
+      await endCurrentTrip(userId);
+
+      // Second trip
+      await startNewTrip(userId, 'Region2');
+      await completeStop(userId, 'stop2');
+      await completeStop(userId, 'stop3');
+      await endCurrentTrip(userId);
+
+      const memory = await getUserMemory(userId);
+      expect(memory?.tripHistory?.length).toBe(2);
+      expect(memory?.tripHistory?.[0].region).toBe('Region1');
+      expect(memory?.tripHistory?.[0].stopsVisited).toEqual(['stop1']);
+      expect(memory?.tripHistory?.[1].region).toBe('Region2');
+      expect(memory?.tripHistory?.[1].stopsVisited).toEqual(['stop2', 'stop3']);
+    });
+
+    it('should handle concurrent trips gracefully', async () => {
+      const userId = 'test-concurrent-trips';
+
+      // Start first trip
+      const trip1 = await startNewTrip(userId, 'Region1');
+      const tripId1 = trip1.tripId;
+
+      // Start second trip (should end first)
+      const trip2 = await startNewTrip(userId, 'Region2');
+      const tripId2 = trip2.tripId;
+
+      expect(tripId1).not.toBe(tripId2);
+
+      const current = await getCurrentTrip(userId);
+      expect(current?.tripId).toBe(tripId2);
+      expect(current?.region).toBe('Region2');
+
+      const memory = await getUserMemory(userId);
+      // First trip should be in history
+      expect(memory?.tripHistory?.some(t => t.tripId === tripId1)).toBe(true);
+    });
+
+    it('should add constraints to current trip', async () => {
+      const userId = 'test-trip-constraints';
+      await startNewTrip(userId);
+
+      await addTripConstraint(userId, { timeLimit: '90 minutes' });
+      await addTripConstraint(userId, { maxDistance: 50 });
+
+      const trip = await getCurrentTrip(userId);
+      expect(trip?.constraints.timeLimit).toBe('90 minutes');
+      expect(trip?.constraints.maxDistance).toBe(50);
+    });
+
+    it('should manage temporary preferences', async () => {
+      const userId = 'test-temp-prefs';
+      await startNewTrip(userId);
+
+      await addTemporaryPreference(userId, 'scenic-routes');
+      await addTemporaryPreference(userId, 'avoid-tolls');
+      // Should not duplicate
+      await addTemporaryPreference(userId, 'scenic-routes');
+
+      const trip = await getCurrentTrip(userId);
+      expect(trip?.temporaryPreferences).toEqual(['scenic-routes', 'avoid-tolls']);
+    });
+
+    it('should track completed stops', async () => {
+      const userId = 'test-stops';
+      await startNewTrip(userId);
+
+      await completeStop(userId, 'stop-1');
+      await completeStop(userId, 'stop-2');
+      // Should not duplicate
+      await completeStop(userId, 'stop-1');
+
+      const trip = await getCurrentTrip(userId);
+      expect(trip?.completedStops).toEqual(['stop-1', 'stop-2']);
+    });
+  });
+
+  describe('Privacy Controls', () => {
+    it('should respect data retention settings', async () => {
+      const userId = 'test-privacy-retention';
+
+      const settings = await setPrivacySettings(userId, {
+        dataRetentionDays: 30,
+        consentToStore: true
+      });
+
+      expect(settings.dataRetentionDays).toBe(30);
+      expect(settings.consentToStore).toBe(true);
+    });
+
+    it('should exclude from analytics when requested', async () => {
+      const userId = 'test-privacy-analytics';
+
+      await setPrivacySettings(userId, {
+        excludeFromAnalytics: true
+      });
+
+      const excluded = await isExcludedFromAnalytics(userId);
+      expect(excluded).toBe(true);
+    });
+
+    it('should prevent memory storage in privacy mode', async () => {
+      const userId = 'test-privacy-mode';
+
+      // Initially should allow storage
+      let canStore = await shouldStoreMemory(userId);
+      expect(canStore).toBe(true);
+
+      // Enable privacy mode
+      await setPrivacySettings(userId, {
+        mode: true,
+        activatedAt: new Date()
+      });
+
+      canStore = await shouldStoreMemory(userId);
+      expect(canStore).toBe(false);
+
+      // Even with consent, privacy mode blocks storage
+      await setPrivacySettings(userId, {
+        consentToStore: true
+      });
+
+      canStore = await shouldStoreMemory(userId);
+      expect(canStore).toBe(false);
+
+      // Disable privacy mode
+      await setPrivacySettings(userId, {
+        mode: false
+      });
+
+      canStore = await shouldStoreMemory(userId);
+      expect(canStore).toBe(true);
+    });
+
+    it('should handle consent withdrawal', async () => {
+      const userId = 'test-consent';
+
+      await setPrivacySettings(userId, {
+        consentToStore: false
+      });
+
+      const canStore = await shouldStoreMemory(userId);
+      expect(canStore).toBe(false);
+    });
+
+    it('should maintain backward compatibility with legacy privacy mode', async () => {
+      const userId = 'test-legacy-privacy';
+
+      // Use legacy privacy mode
+      await upsertUserMemory(userId, {
+        privacyMode: true
+      });
+
+      const canStore = await shouldStoreMemory(userId);
+      expect(canStore).toBe(false);
+
+      // Upgrade to new settings
+      await setPrivacySettings(userId, {
+        mode: false,
+        consentToStore: true
+      });
+
+      const canStoreAfter = await shouldStoreMemory(userId);
+      expect(canStoreAfter).toBe(true);
     });
   });
 });
